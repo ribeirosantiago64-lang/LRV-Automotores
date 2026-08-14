@@ -1,4 +1,4 @@
-const WHATSAPP='59899000000';
+const WHATSAPP='59897135114';
 const ADMIN_PASSWORD='123456789Muy';
 const defaults=[
  {id:'onix-rs',brand:'Chevrolet',model:'Onix RS',year:2025,price:24500,condition:'0 km',type:'Hatch',km:0,fuel:'Nafta',transmission:'Automática',description:'Diseño deportivo, excelente tecnología y seguridad para disfrutar cada viaje.',images:['https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&w=1200&q=85','https://images.unsplash.com/photo-1550355291-bbee04a92027?auto=format&fit=crop&w=1200&q=85']},
