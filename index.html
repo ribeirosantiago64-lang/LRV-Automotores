@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="LRV Automotores: vehículos 0 km y usados en Uruguay.">
+  <title>LRV Automotores</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#/" aria-label="Inicio LRV Automotores"><span>LRV</span> Automotores</a>
+    <nav>
+      <a href="#catalogo">Vehículos</a>
+      <a href="#contacto">Contacto</a>
+      <button class="admin-link" id="adminOpen">Administrar</button>
+    </nav>
+  </header>
+
+  <main id="app">
+    <section class="hero">
+      <div class="hero-content">
+        <p class="eyebrow">Tu próximo vehículo está acá</p>
+        <h1>Elegí el auto que va con vos.</h1>
+        <p>0 km y usados seleccionados, con atención personalizada y cotización directa.</p>
+        <a class="button primary" href="#catalogo">Ver vehículos</a>
+      </div>
+    </section>
+
+    <section class="catalog section" id="catalogo">
+      <div class="section-heading">
+        <div><p class="eyebrow">Nuestro stock</p><h2>Vehículos disponibles</h2></div>
+        <span id="resultCount"></span>
+      </div>
+      <div class="filters">
+        <label>Buscar<input id="search" type="search" placeholder="Marca, modelo o año"></label>
+        <label>Estado<select id="condition"><option value="">Todos</option><option value="0 km">0 km</option><option value="Usado">Usados</option></select></label>
+        <label>Tipo<select id="type"><option value="">Todos</option><option>SUV</option><option>Hatch</option><option>Sedán</option></select></label>
+        <label>Orden<select id="sort"><option value="featured">Destacados</option><option value="price-desc">Mayor precio</option><option value="price-asc">Menor precio</option><option value="year-desc">Más nuevos</option></select></label>
+      </div>
+      <div class="vehicle-grid" id="vehicleGrid"></div>
+    </section>
+
+    <section class="contact section" id="contacto">
+      <div><p class="eyebrow">Hablemos</p><h2>¿Encontraste el vehículo que buscabas?</h2><p>Escribinos y coordiná una visita o una cotización personalizada.</p></div>
+      <a class="button whatsapp" id="generalWhatsapp" target="_blank" rel="noopener">Contactar por WhatsApp</a>
+    </section>
+  </main>
+
+  <div class="modal" id="detailModal" aria-hidden="true"><div class="modal-card detail-card"><button class="close" data-close="detailModal">×</button><div id="detailContent"></div></div></div>
+  <div class="modal" id="loginModal" aria-hidden="true"><div class="modal-card small"><button class="close" data-close="loginModal">×</button><p class="eyebrow">Acceso privado</p><h2>Administrador</h2><form id="loginForm"><label>Contraseña<input id="password" type="password" autocomplete="current-password" required></label><p class="error" id="loginError"></p><button class="button primary" type="submit">Ingresar</button></form></div></div>
+  <div class="modal" id="adminModal" aria-hidden="true"><div class="modal-card admin-card"><button class="close" data-close="adminModal">×</button><div class="admin-head"><div><p class="eyebrow">Panel privado</p><h2>Administrar vehículos</h2></div><button class="button secondary" id="resetCatalog">Restablecer ejemplos</button></div><p class="admin-note">Los cambios se guardan en este navegador. Usá “Exportar catálogo” para conservar una copia.</p><div id="adminList" class="admin-list"></div><hr><h3 id="formTitle">Agregar vehículo</h3><form id="vehicleForm" class="vehicle-form"><input type="hidden" id="vehicleId"><label>Marca<input id="vehicleBrand" required></label><label>Modelo<input id="vehicleModel" required></label><label>Año<input id="vehicleYear" type="number" min="1950" max="2100" required></label><label>Precio en USD<input id="vehiclePrice" type="number" min="0" required></label><label>Estado<select id="vehicleCondition"><option>0 km</option><option>Usado</option></select></label><label>Tipo<select id="vehicleType"><option>SUV</option><option>Hatch</option><option>Sedán</option></select></label><label>Kilometraje<input id="vehicleKm" type="number" min="0" value="0"></label><label>Combustible<input id="vehicleFuel" value="Nafta"></label><label>Transmisión<input id="vehicleTransmission" value="Automática"></label><label class="wide">URLs de imágenes (una por línea)<textarea id="vehicleImages" rows="4" required></textarea></label><label class="wide">Descripción<textarea id="vehicleDescription" rows="4" required></textarea></label><div class="form-actions wide"><button class="button primary" type="submit">Guardar vehículo</button><button class="button secondary" type="button" id="cancelEdit">Cancelar</button><button class="button secondary" type="button" id="exportCatalog">Exportar catálogo</button></div></form></div></div>
+  <footer><span>© 2026 LRV Automotores</span><span>Montevideo, Uruguay</span></footer>
+  <script src="app.js"></script>
+</body>
+</html>
