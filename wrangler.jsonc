@@ -15,6 +15,9 @@
     "GITHUB_REPO": "LRV-Automotores",
     "GITHUB_BRANCH": "main"
   },
+  "secrets": {
+    "required": ["ADMIN_PASSWORD", "SESSION_SECRET", "GITHUB_TOKEN"]
+  },
   "observability": {
     "enabled": true,
     "logs": { "head_sampling_rate": 1 },
