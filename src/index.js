@@ -188,6 +188,8 @@ async function api(request, env) {
     const form = await request.formData();
     const vehicle = validateVehicle(JSON.parse(String(form.get("vehicle") || "{}")));
     const files = form.getAll("photos");
+    const uploadedBytes = files.reduce((total, file) => total + (file instanceof File ? file.size : 0), 0);
+    if (uploadedBytes > 25_000_000) return responseJson({ error: "Las fotos superan 25 MB en total" }, 413);
     if (!files.length && !vehicle.existingImages.length) return responseJson({ error: "Agregá al menos una foto" }, 400);
     return responseJson(await storeVehicle(env, vehicle, files, cleanText(form.get("originalId"), 100)), 201);
   }
