@@ -1,0 +1,18 @@
+{
+  "id": "peugeot-208-gt-2024",
+  "brand": "Peugeot",
+  "model": "208 GT",
+  "year": 2024,
+  "price": 29900,
+  "condition": "0 km",
+  "type": "Hatch",
+  "km": 0,
+  "fuel": "Nafta",
+  "transmission": "Automática",
+  "description": "Estilo francés, puesto de conducción i-Cockpit y prestaciones deportivas.",
+  "features": [],
+  "images": [
+    "https://images.unsplash.com/photo-1597007030739-6d2e7172ee31?auto=format&fit=crop&w=1200&q=85"
+  ],
+  "updatedAt": "2026-08-15T00:00:00.000Z"
+}
