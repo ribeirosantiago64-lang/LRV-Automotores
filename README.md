@@ -1,20 +1,34 @@
 # LRV Automotores
 
-Catálogo web responsive de vehículos 0 km y usados.
+Sitio de venta de vehículos con catálogo público y panel administrador persistente.
 
-## Funciones
+Al guardar un vehículo, el Worker crea un único commit atómico con esta estructura:
 
-- Filtros por estado y tipo, buscador y orden por precio o año.
-- Ficha ampliada con galería, datos técnicos y cotización por WhatsApp.
-- Panel de administración para agregar, editar y quitar vehículos.
-- Diseño adaptable a celulares, tablets y computadoras.
+```text
+vehiculos/marca-modelo-año/
+├── datos.json
+└── fotos/
+    ├── foto-01.jpg
+    └── foto-02.jpg
+```
 
-## Configuración rápida
+## Variables secretas de Cloudflare
 
-En `app.js`, sustituir `WHATSAPP` por el número real en formato internacional, sin `+` ni espacios.
+El Worker requiere tres secretos que nunca deben guardarse en GitHub:
 
-El catálogo editado desde el panel se conserva en el almacenamiento local del navegador. Para respaldarlo, usar **Exportar catálogo**.
+- `ADMIN_PASSWORD`: contraseña del panel.
+- `SESSION_SECRET`: texto aleatorio largo para firmar sesiones.
+- `GITHUB_TOKEN`: token de acceso limitado únicamente a este repositorio con permiso **Contents: Read and write**.
+
+## Desarrollo
+
+```bash
+npm install
+npm run types
+npm run check
+npm run dev
+```
 
 ## Publicación
 
-El proyecto es estático y puede publicarse con GitHub Pages desde la rama `main` y la carpeta raíz.
+Conectar este repositorio desde **Cloudflare Workers & Pages → Create → Import a repository**. Usar `npm run deploy` como comando de publicación y agregar los tres secretos en **Settings → Variables and Secrets**.
