@@ -1,0 +1,19 @@
+{
+  "id": "jeep-compass-limited-2021",
+  "brand": "Jeep",
+  "model": "Compass Limited",
+  "year": 2021,
+  "price": 32900,
+  "condition": "Usado",
+  "type": "SUV",
+  "km": 48500,
+  "fuel": "Nafta",
+  "transmission": "Automática",
+  "description": "SUV confortable y completo, ideal para ciudad y ruta.",
+  "features": [],
+  "images": [
+    "https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&w=1200&q=85",
+    "https://images.unsplash.com/photo-1542362567-b07e54358753?auto=format&fit=crop&w=1200&q=85"
+  ],
+  "updatedAt": "2026-08-15T00:00:00.000Z"
+}
