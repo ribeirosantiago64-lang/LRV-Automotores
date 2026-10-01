@@ -35,13 +35,17 @@ detail = function(id) {
   form.className = "vehicle-form";
   form.innerHTML = `<h3 class="wide">Solicitar compra</h3>
     <label>Nombre<input name="name" autocomplete="name" maxlength="100" required></label>
-    <label>Teléfono<input name="phone" type="tel" autocomplete="tel" maxlength="30" required></label>
+    <label>Celular<input name="phone" type="tel" inputmode="numeric" autocomplete="tel-national" minlength="9" maxlength="9" pattern="[0-9]{9}" placeholder="097135114" title="Ingresá exactamente 9 dígitos, sin espacios ni símbolos" required></label>
     <label class="wide">Correo<input name="email" type="email" autocomplete="email" maxlength="200" required></label>
     <label class="wide">Consulta<textarea name="message" rows="3" maxlength="1500"></textarea></label>
     <p class="wide">Usaremos tus datos para responder sobre este vehículo. No se confirma ninguna compra ni se realiza un cobro.${automaticEmailEnabled ? " El envío por correo se procesa mediante Formspree." : ""}</p>
     <div class="form-actions wide"><button class="button whatsapp" type="submit" value="whatsapp">Enviar por WhatsApp</button>
     <button class="button secondary" type="submit" value="email" ${automaticEmailEnabled ? "" : "disabled"}>Enviar solicitud por correo</button></div>
     <p class="wide" role="status" id="orderStatus">${automaticEmailEnabled ? "La solicitud por correo se envía desde este formulario, sin abrir tu aplicación de correo." : "El envío automático por correo todavía no está disponible. Podés consultar por WhatsApp."}</p>`;
+  const phoneInput = form.elements.namedItem("phone");
+  phoneInput.addEventListener("input", () => {
+    phoneInput.value = phoneInput.value.replace(/[^0-9]/g, "").slice(0, 9);
+  });
   const extraFields = {vehicle: `${vehicle.brand} ${vehicle.model} ${vehicle.year}`, reference: vehicle.id, published_price: money(vehicle.price), _subject: `Solicitud de vehículo — ${vehicle.brand} ${vehicle.model} ${vehicle.year}`};
   for (const [name, value] of Object.entries(extraFields)) {
     const input = document.createElement("input");
