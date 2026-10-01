@@ -22,6 +22,10 @@ function clearForm(){$("#vehicleForm").reset();$("#vehicleId").value="";$("#exis
 $("#cancelEdit").onclick=clearForm;
 $("#vehicleForm").onsubmit=async e=>{e.preventDefault();const id=$("#vehicleId").value,current=vehicles.find(v=>v.id===id);const vehicle={id:id||undefined,brand:$("#vehicleBrand").value.trim(),model:$("#vehicleModel").value.trim(),year:+$("#vehicleYear").value,price:+$("#vehiclePrice").value,condition:$("#vehicleCondition").value,type:$("#vehicleType").value,km:+$("#vehicleKm").value,fuel:$("#vehicleFuel").value.trim(),transmission:$("#vehicleTransmission").value.trim(),description:$("#vehicleDescription").value.trim(),existingImages:current?.images||[]};const form=new FormData();form.append("vehicle",JSON.stringify(vehicle));if(id)form.append("originalId",id);for(const file of $("#vehiclePhotos").files)form.append("photos",file);const button=$("#saveVehicle");button.disabled=true;button.textContent="Guardando…";$("#formError").textContent="";try{await api("/api/vehicles",{method:"POST",body:form});await load();renderAdmin();clearForm()}catch(err){$("#formError").textContent=err.message}finally{button.disabled=false;button.textContent="Guardar vehículo"}};
 const ORDER_EMAIL = "lucianoribeiroke@gmail.com";
+// Public form endpoint, not a password or API key. Set after verifying the
+// recipient lucianoribeiroke@gmail.com in the owner's Formspree account.
+const CONTACT_FORM_ENDPOINT = "";
+const automaticEmailEnabled = /^https:\/\/formspree\.io\/f\/[a-zA-Z0-9]+$/.test(CONTACT_FORM_ENDPOINT);
 const originalDetail = detail;
 detail = function(id) {
   originalDetail(id);
@@ -34,20 +38,41 @@ detail = function(id) {
     <label>Teléfono<input name="phone" type="tel" autocomplete="tel" maxlength="30" required></label>
     <label class="wide">Correo<input name="email" type="email" autocomplete="email" maxlength="200" required></label>
     <label class="wide">Consulta<textarea name="message" rows="3" maxlength="1500"></textarea></label>
-    <p class="wide">Tus datos se incluirán en la solicitud dirigida a LRV Automotores. No se confirma ninguna compra ni se realiza un cobro.</p>
+    <p class="wide">Usaremos tus datos para responder sobre este vehículo. No se confirma ninguna compra ni se realiza un cobro.${automaticEmailEnabled ? " El envío por correo se procesa mediante Formspree." : ""}</p>
     <div class="form-actions wide"><button class="button whatsapp" type="submit" value="whatsapp">Enviar por WhatsApp</button>
-    <button class="button secondary" type="submit" value="email">Enviar por correo</button></div>
-    <p class="wide" role="status" id="orderStatus">Se abrirá WhatsApp o tu aplicación de correo. Confirmá allí el envío.</p>`;
+    <button class="button secondary" type="submit" value="email" ${automaticEmailEnabled ? "" : "disabled"}>Enviar solicitud por correo</button></div>
+    <p class="wide" role="status" id="orderStatus">${automaticEmailEnabled ? "La solicitud por correo se envía desde este formulario, sin abrir tu aplicación de correo." : "El envío automático por correo todavía no está disponible. Podés consultar por WhatsApp."}</p>`;
+  const extraFields = {vehicle: `${vehicle.brand} ${vehicle.model} ${vehicle.year}`, reference: vehicle.id, published_price: money(vehicle.price), _subject: `Solicitud de vehículo — ${vehicle.brand} ${vehicle.model} ${vehicle.year}`};
+  for (const [name, value] of Object.entries(extraFields)) {
+    const input = document.createElement("input");
+    input.type = "hidden"; input.name = name; input.value = value;
+    form.append(input);
+  }
+  if (automaticEmailEnabled) {
+    form.action = CONTACT_FORM_ENDPOINT;
+    form.method = "POST";
+    // Honeypot in addition to the provider's spam protection.
+    const honeypot = document.createElement("input");
+    honeypot.name = "_gotcha"; honeypot.type = "text";
+    honeypot.hidden = true; honeypot.tabIndex = -1; honeypot.autocomplete = "off";
+    form.append(honeypot);
+  }
   form.onsubmit = function(event) {
     event.preventDefault();
     const data = new FormData(form);
     const message = `Solicitud de compra — LRV Automotores\nVehículo: ${vehicle.brand} ${vehicle.model} ${vehicle.year}\nReferencia: ${vehicle.id}\nPrecio publicado: ${money(vehicle.price)}\nNombre: ${data.get("name")}\nTeléfono: ${data.get("phone")}\nCorreo: ${data.get("email")}\nConsulta: ${data.get("message") || "Solicito información para comprar este vehículo."}\nSitio: ${location.origin}\nSolicitud sujeta a disponibilidad y confirmación.`;
     if (event.submitter?.value === "email") {
-      location.href = `mailto:${ORDER_EMAIL}?subject=${encodeURIComponent(`Solicitud: ${vehicle.brand} ${vehicle.model} ${vehicle.year}`)}&body=${encodeURIComponent(message)}`;
+      if (!automaticEmailEnabled) return;
+      // The provider handles any CAPTCHA, errors, and the receipt page.
+      // Do not claim delivery until the provider accepts the submission.
+      form.querySelector("[role=status]").textContent = "Enviando solicitud…";
+      form.querySelectorAll("button").forEach(button => button.disabled = true);
+      HTMLFormElement.prototype.submit.call(form);
+      return;
     } else {
       window.open(`https://wa.me/${WHATSAPP}?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
     }
-    form.querySelector("[role=status]").textContent = "Confirmá el envío en la aplicación abierta. Si no se abrió, comprobá que tengas configurado el correo o permití abrir WhatsApp.";
+    form.querySelector("[role=status]").textContent = "Confirmá el envío en WhatsApp. Si no se abrió, permití abrir WhatsApp en tu navegador.";
   };
   $("#detailContent").append(form);
 };
