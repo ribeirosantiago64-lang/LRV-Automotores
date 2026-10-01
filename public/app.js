@@ -24,7 +24,7 @@ $("#vehicleForm").onsubmit=async e=>{e.preventDefault();const id=$("#vehicleId")
 const ORDER_EMAIL = "lucianoribeiroke@gmail.com";
 // Public form endpoint, not a password or API key. Set after verifying the
 // recipient lucianoribeiroke@gmail.com in the owner's Formspree account.
-const CONTACT_FORM_ENDPOINT = "";
+const CONTACT_FORM_ENDPOINT = "https://formspree.io/f/mnpnypdl";
 const automaticEmailEnabled = /^https:\/\/formspree\.io\/f\/[a-zA-Z0-9]+$/.test(CONTACT_FORM_ENDPOINT);
 const originalDetail = detail;
 detail = function(id) {
