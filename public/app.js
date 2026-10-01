@@ -86,11 +86,22 @@ detail = function(id) {
     <label>Nombre<input name="name" autocomplete="name" maxlength="100" required></label>
     <label>Celular<input name="phone" type="tel" inputmode="numeric" autocomplete="tel-national" minlength="9" maxlength="9" pattern="[0-9]{9}" placeholder="097135114" title="Ingresá exactamente 9 dígitos, sin espacios ni símbolos" required></label>
     <label class="wide">Correo<input name="email" type="email" autocomplete="email" maxlength="200" required></label>
-    <label class="wide">Consulta<textarea name="message" rows="3" maxlength="1500"></textarea></label>
+    <label class="wide">Consulta<textarea name="message" rows="3" maxlength="1500" required></textarea></label>
     <p class="wide">Usaremos tus datos para responder sobre este vehículo. No se confirma ninguna compra ni se realiza un cobro.${automaticEmailEnabled ? " El envío por correo se procesa mediante Formspree." : ""}</p>
     <div class="form-actions wide"><button class="button whatsapp" type="submit" value="whatsapp">Enviar por WhatsApp</button>
     <button class="button secondary" type="submit" value="email" ${automaticEmailEnabled ? "" : "disabled"}>Enviar solicitud por correo</button></div>
     <p class="wide" role="status" id="orderStatus">${automaticEmailEnabled ? "La solicitud por correo se envía desde este formulario, sin abrir tu aplicación de correo." : "El envío automático por correo todavía no está disponible. Podés consultar por WhatsApp."}</p>`;
+  let pending = false;
+  function updateSendButtons() {
+    for (const name of ["name", "message"]) {
+      const field = form.elements.namedItem(name);
+      field.setCustomValidity(field.value.trim() ? "" : "Completá este campo.");
+    }
+    const complete = form.checkValidity();
+    form.querySelectorAll("button").forEach(button => {
+      button.disabled = pending || !complete || (button.value === "email" && !automaticEmailEnabled);
+    });
+  }
   const phoneInput = form.elements.namedItem("phone");
   phoneInput.addEventListener("input", () => {
     phoneInput.value = phoneInput.value.replace(/[^0-9]/g, "").slice(0, 9);
@@ -110,7 +121,9 @@ detail = function(id) {
     honeypot.hidden = true; honeypot.tabIndex = -1; honeypot.autocomplete = "off";
     form.append(honeypot);
   }
-  let pending = false;
+  form.addEventListener("input", updateSendButtons);
+  form.addEventListener("change", updateSendButtons);
+  updateSendButtons();
   const requestIds = {};
   form.onsubmit = async function(event) {
     event.preventDefault();
@@ -128,7 +141,7 @@ detail = function(id) {
     } catch (error) {
       form.querySelector("[role=status]").textContent = `${error.message} No se envió la solicitud. Intentá nuevamente.`;
       pending = false;
-      form.querySelectorAll("button").forEach(button => button.disabled = button.value === "email" && !automaticEmailEnabled);
+      updateSendButtons();
       return;
     }
     const message = `Solicitud de compra — LRV Automotores\nVehículo: ${vehicle.brand} ${vehicle.model} ${vehicle.year}\nReferencia: ${vehicle.id}\nPrecio publicado: ${money(vehicle.price)}\nNombre: ${data.get("name")}\nTeléfono: ${data.get("phone")}\nCorreo: ${data.get("email")}\nConsulta: ${data.get("message") || "Solicito información para comprar este vehículo."}\nSitio: ${location.origin}\nSolicitud sujeta a disponibilidad y confirmación.`;
@@ -144,7 +157,7 @@ detail = function(id) {
       location.assign(`https://wa.me/${WHATSAPP}?text=${encodeURIComponent(message)}`);
     }
     pending = false;
-    form.querySelectorAll("button").forEach(button => button.disabled = button.value === "email" && !automaticEmailEnabled);
+    updateSendButtons();
     form.querySelector("[role=status]").textContent = "Confirmá el envío en WhatsApp. Si no se abrió, permití abrir WhatsApp en tu navegador.";
   };
   $("#detailContent").append(form);

@@ -203,8 +203,8 @@ async function recordInquiry(request, env) {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return responseJson({ error: "Datos inválidos" }, 400);
   if (raw.honeypot) return responseJson({ error: "Solicitud no permitida" }, 400);
   const name = cleanText(raw.name, 100), phone = cleanText(raw.phone, 30), email = cleanText(raw.email, 200), message = cleanText(raw.message, 1500);
-  if (!name || !/^[0-9]{9}$/.test(phone) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !/^[a-z0-9-]{1,90}$/.test(raw.vehicleId || "") || !/^[0-9a-f-]{36}$/.test(raw.id || "") || !["email", "whatsapp"].includes(raw.channel)) {
-    return responseJson({ error: "Completá nombre, celular de 9 dígitos y correo válido." }, 400);
+  if (!name || !message || !/^[0-9]{9}$/.test(phone) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !/^[a-z0-9-]{1,90}$/.test(raw.vehicleId || "") || !/^[0-9a-f-]{36}$/.test(raw.id || "") || !["email", "whatsapp"].includes(raw.channel)) {
+    return responseJson({ error: "Completá nombre, celular de 9 dígitos, correo válido y descripción." }, 400);
   }
   const db = await inquiriesDatabase(env);
   const ipHash = base64Url(new Uint8Array(await crypto.subtle.digest("SHA-256", enc.encode(`${env.SESSION_SECRET}:${request.headers.get("cf-connecting-ip") || "local"}`))));
