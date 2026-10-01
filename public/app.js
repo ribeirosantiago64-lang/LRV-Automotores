@@ -27,12 +27,61 @@ const ORDER_EMAIL = "lucianoribeiroke@gmail.com";
 const CONTACT_FORM_ENDPOINT = "https://formspree.io/f/mnpnypdl";
 const automaticEmailEnabled = /^https:\/\/formspree\.io\/f\/[a-zA-Z0-9]+$/.test(CONTACT_FORM_ENDPOINT);
 const originalDetail = detail;
+const originalRenderAdmin = renderAdmin;
+renderAdmin = function() {
+  originalRenderAdmin();
+  let history = $("#inquiryHistory");
+  if (!history) {
+    history = document.createElement("section");
+    history.id = "inquiryHistory";
+    history.className = "inquiry-history";
+    $("#adminList").before(history);
+  }
+  history.innerHTML = `<h3>Historial de solicitudes</h3><p>Registros del formulario. El canal indica la opción elegida; no confirma la entrega del correo o mensaje.</p><button class="button secondary" type="button" id="refreshInquiries">Actualizar historial</button><div id="inquiryRows" aria-live="polite"></div><button class="button secondary" type="button" id="moreInquiries" hidden>Ver anteriores</button>`;
+  let offset = 0;
+  async function fetchHistory(reset = false) {
+    const rows = history.querySelector("#inquiryRows");
+    const more = history.querySelector("#moreInquiries");
+    const refresh = history.querySelector("#refreshInquiries");
+    if (reset) { offset = 0; rows.replaceChildren(); }
+    more.disabled = refresh.disabled = true;
+    try {
+      const result = await api(`/api/inquiries?offset=${offset}`);
+      if (!result.items.length && !offset) rows.textContent = "Todavía no hay solicitudes registradas.";
+      for (const inquiry of result.items) {
+        const article = document.createElement("article");
+        article.className = "inquiry-record";
+        const heading = document.createElement("h4");
+        heading.textContent = inquiry.vehicle;
+        article.append(heading);
+        const fields = {Fecha: new Date(inquiry.created_at).toLocaleString("es-UY", {timeZone: "America/Montevideo"}), Nombre: inquiry.name, Celular: inquiry.phone, Correo: inquiry.email, Descripción: inquiry.message || "Sin descripción", Canal: inquiry.channel === "email" ? "Correo solicitado" : "WhatsApp iniciado"};
+        for (const [label, value] of Object.entries(fields)) {
+          const p = document.createElement("p");
+          const strong = document.createElement("strong"); strong.textContent = `${label}: `;
+          p.append(strong, document.createTextNode(value)); article.append(p);
+        }
+        rows.append(article);
+      }
+      offset += result.items.length;
+      more.hidden = !result.hasMore;
+    } catch (error) {
+      const p = document.createElement("p"); p.className = "error"; p.textContent = error.message; rows.append(p);
+    } finally { more.disabled = refresh.disabled = false; }
+  }
+  history.querySelector("#refreshInquiries").onclick = () => fetchHistory(true);
+  history.querySelector("#moreInquiries").onclick = () => fetchHistory();
+  fetchHistory(true);
+};
+const originalLogout = $("#logout").onclick;
+$("#logout").onclick = async () => { await originalLogout(); $("#inquiryHistory")?.remove(); };
 detail = function(id) {
   originalDetail(id);
   const vehicle = vehicles.find(item => item.id === id);
   if (!vehicle) return;
   const form = document.createElement("form");
   form.className = "vehicle-form";
+  // All vehicle requests use the form so the administrator has customer details.
+  $("#detailContent .whatsapp")?.remove();
   form.innerHTML = `<h3 class="wide">Solicitar compra</h3>
     <label>Nombre<input name="name" autocomplete="name" maxlength="100" required></label>
     <label>Celular<input name="phone" type="tel" inputmode="numeric" autocomplete="tel-national" minlength="9" maxlength="9" pattern="[0-9]{9}" placeholder="097135114" title="Ingresá exactamente 9 dígitos, sin espacios ni símbolos" required></label>
@@ -61,9 +110,27 @@ detail = function(id) {
     honeypot.hidden = true; honeypot.tabIndex = -1; honeypot.autocomplete = "off";
     form.append(honeypot);
   }
-  form.onsubmit = function(event) {
+  let pending = false;
+  const requestIds = {};
+  form.onsubmit = async function(event) {
     event.preventDefault();
+    if (pending || !form.reportValidity()) return;
     const data = new FormData(form);
+    const channel = event.submitter?.value === "email" ? "email" : "whatsapp";
+    if (channel === "email" && !automaticEmailEnabled) return;
+    pending = true;
+    form.querySelectorAll("button").forEach(button => button.disabled = true);
+    form.querySelector("[role=status]").textContent = "Registrando solicitud…";
+    const fingerprint = JSON.stringify([channel, data.get("name"), data.get("phone"), data.get("email"), data.get("message")]);
+    requestIds[fingerprint] ||= crypto.randomUUID();
+    try {
+      await api("/api/inquiries", {method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify({id: requestIds[fingerprint], vehicleId: vehicle.id, name: data.get("name"), phone: data.get("phone"), email: data.get("email"), message: data.get("message"), channel, honeypot: data.get("_gotcha") || ""})});
+    } catch (error) {
+      form.querySelector("[role=status]").textContent = `${error.message} No se envió la solicitud. Intentá nuevamente.`;
+      pending = false;
+      form.querySelectorAll("button").forEach(button => button.disabled = button.value === "email" && !automaticEmailEnabled);
+      return;
+    }
     const message = `Solicitud de compra — LRV Automotores\nVehículo: ${vehicle.brand} ${vehicle.model} ${vehicle.year}\nReferencia: ${vehicle.id}\nPrecio publicado: ${money(vehicle.price)}\nNombre: ${data.get("name")}\nTeléfono: ${data.get("phone")}\nCorreo: ${data.get("email")}\nConsulta: ${data.get("message") || "Solicito información para comprar este vehículo."}\nSitio: ${location.origin}\nSolicitud sujeta a disponibilidad y confirmación.`;
     if (event.submitter?.value === "email") {
       if (!automaticEmailEnabled) return;
@@ -74,8 +141,10 @@ detail = function(id) {
       HTMLFormElement.prototype.submit.call(form);
       return;
     } else {
-      window.open(`https://wa.me/${WHATSAPP}?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
+      location.assign(`https://wa.me/${WHATSAPP}?text=${encodeURIComponent(message)}`);
     }
+    pending = false;
+    form.querySelectorAll("button").forEach(button => button.disabled = button.value === "email" && !automaticEmailEnabled);
     form.querySelector("[role=status]").textContent = "Confirmá el envío en WhatsApp. Si no se abrió, permití abrir WhatsApp en tu navegador.";
   };
   $("#detailContent").append(form);

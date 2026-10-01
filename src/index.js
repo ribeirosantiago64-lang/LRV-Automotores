@@ -169,8 +169,60 @@ async function deleteVehicle(env, id) {
   return commitTree(env, state, tree, `Eliminar vehículo ${id}`);
 }
 
+async function inquiriesDatabase(env) {
+  if (!env.INQUIRIES_DB) throw new Error("El historial todavía no está disponible. Intentá nuevamente más tarde.");
+  await env.INQUIRIES_DB.prepare(`CREATE TABLE IF NOT EXISTS inquiries (
+    id TEXT PRIMARY KEY, created_at TEXT NOT NULL, vehicle_id TEXT NOT NULL,
+    vehicle TEXT NOT NULL, price REAL NOT NULL, name TEXT NOT NULL,
+    phone TEXT NOT NULL, email TEXT NOT NULL, message TEXT NOT NULL,
+    channel TEXT NOT NULL, ip_hash TEXT NOT NULL
+  )`).run();
+  await env.INQUIRIES_DB.prepare("CREATE INDEX IF NOT EXISTS inquiries_created ON inquiries(created_at DESC)").run();
+  await env.INQUIRIES_DB.prepare("CREATE INDEX IF NOT EXISTS inquiries_rate ON inquiries(ip_hash, created_at)").run();
+  return env.INQUIRIES_DB;
+}
+
+async function recordInquiry(request, env) {
+  if (request.headers.get("origin") !== new URL(request.url).origin) return responseJson({ error: "Origen no permitido" }, 403);
+  if (!request.headers.get("content-type")?.startsWith("application/json")) return responseJson({ error: "Formato inválido" }, 415);
+  // Enforce the real body limit, including chunked requests.
+  const reader = request.body?.getReader();
+  if (!reader) return responseJson({ error: "Faltan datos" }, 400);
+  const bodyDecoder = new TextDecoder();
+  let text = "", size = 0;
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > 12000) { await reader.cancel(); return responseJson({ error: "Solicitud demasiado extensa" }, 413); }
+    text += bodyDecoder.decode(value, { stream: true });
+  }
+  text += bodyDecoder.decode();
+  let raw;
+  try { raw = JSON.parse(text); } catch { return responseJson({ error: "Datos inválidos" }, 400); }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return responseJson({ error: "Datos inválidos" }, 400);
+  if (raw.honeypot) return responseJson({ error: "Solicitud no permitida" }, 400);
+  const name = cleanText(raw.name, 100), phone = cleanText(raw.phone, 30), email = cleanText(raw.email, 200), message = cleanText(raw.message, 1500);
+  if (!name || !/^[0-9]{9}$/.test(phone) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !/^[a-z0-9-]{1,90}$/.test(raw.vehicleId || "") || !/^[0-9a-f-]{36}$/.test(raw.id || "") || !["email", "whatsapp"].includes(raw.channel)) {
+    return responseJson({ error: "Completá nombre, celular de 9 dígitos y correo válido." }, 400);
+  }
+  const db = await inquiriesDatabase(env);
+  const ipHash = base64Url(new Uint8Array(await crypto.subtle.digest("SHA-256", enc.encode(`${env.SESSION_SECRET}:${request.headers.get("cf-connecting-ip") || "local"}`))));
+  const existing = await db.prepare("SELECT id FROM inquiries WHERE id = ? AND ip_hash = ?").bind(raw.id, ipHash).first();
+  if (existing) return responseJson({ ok: true, id: existing.id });
+  const recent = await db.prepare("SELECT COUNT(*) AS count FROM inquiries WHERE ip_hash = ? AND created_at >= ?").bind(ipHash, new Date(Date.now() - 60000).toISOString()).first();
+  if (Number(recent.count) >= 5) return responseJson({ error: "Esperá un minuto antes de enviar otra solicitud." }, 429);
+  // Take the vehicle snapshot from the server, never from client-supplied prices.
+  const file = await github(env, `/contents/vehiculos/${raw.vehicleId}/datos.json?ref=${encodeURIComponent(env.GITHUB_BRANCH)}`);
+  const vehicle = JSON.parse(base64ToText(file.content));
+  await db.prepare("INSERT INTO inquiries (id, created_at, vehicle_id, vehicle, price, name, phone, email, message, channel, ip_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .bind(raw.id, new Date().toISOString(), raw.vehicleId, `${vehicle.brand} ${vehicle.model} ${vehicle.year}`, Number(vehicle.price), name, phone, email, message, raw.channel, ipHash).run();
+  return responseJson({ ok: true, id: raw.id }, 201);
+}
+
 async function api(request, env) {
   const url = new URL(request.url);
+  if (url.pathname === "/api/inquiries" && request.method === "POST") return recordInquiry(request, env);
   if (url.pathname === "/api/vehicles" && request.method === "GET") return responseJson(await listVehicles(env));
   if (url.pathname === "/api/login" && request.method === "POST") {
     if (!validateOrigin(request)) return responseJson({ error: "Origen no permitido" }, 403);
@@ -182,6 +234,12 @@ async function api(request, env) {
   if (url.pathname === "/api/me" && request.method === "GET") return responseJson({ admin: await isAdmin(request, env) });
   if (!(await isAdmin(request, env))) return responseJson({ error: "No autorizado" }, 401);
   if (!validateOrigin(request)) return responseJson({ error: "Origen no permitido" }, 403);
+  if (url.pathname === "/api/inquiries" && request.method === "GET") {
+    const db = await inquiriesDatabase(env);
+    const offset = Math.max(0, Math.floor(Number(url.searchParams.get("offset")) || 0));
+    const { results } = await db.prepare("SELECT id, created_at, vehicle_id, vehicle, price, name, phone, email, message, channel FROM inquiries ORDER BY created_at DESC, id DESC LIMIT 51 OFFSET ?").bind(offset).all();
+    return responseJson({ items: results.slice(0, 50), hasMore: results.length > 50 });
+  }
   if (url.pathname === "/api/vehicles" && request.method === "POST") {
     const length = Number(request.headers.get("content-length") || 0);
     if (length > MAX_TOTAL) return responseJson({ error: "La carga completa supera 26 MB" }, 413);

@@ -18,6 +18,9 @@
   "secrets": {
     "required": ["ADMIN_PASSWORD", "SESSION_SECRET", "GITHUB_TOKEN"]
   },
+  "d1_databases": [
+    { "binding": "INQUIRIES_DB", "database_name": "lrv-inquiries" }
+  ],
   "observability": {
     "enabled": true,
     "logs": { "head_sampling_rate": 1 },
