@@ -21,4 +21,34 @@ async function deleteVehicle(id){if(!confirm("¿Eliminar este vehículo y su car
 function clearForm(){$("#vehicleForm").reset();$("#vehicleId").value="";$("#existingPhotos").innerHTML="";$("#formTitle").textContent="Agregar vehículo";$("#formError").textContent=""}
 $("#cancelEdit").onclick=clearForm;
 $("#vehicleForm").onsubmit=async e=>{e.preventDefault();const id=$("#vehicleId").value,current=vehicles.find(v=>v.id===id);const vehicle={id:id||undefined,brand:$("#vehicleBrand").value.trim(),model:$("#vehicleModel").value.trim(),year:+$("#vehicleYear").value,price:+$("#vehiclePrice").value,condition:$("#vehicleCondition").value,type:$("#vehicleType").value,km:+$("#vehicleKm").value,fuel:$("#vehicleFuel").value.trim(),transmission:$("#vehicleTransmission").value.trim(),description:$("#vehicleDescription").value.trim(),existingImages:current?.images||[]};const form=new FormData();form.append("vehicle",JSON.stringify(vehicle));if(id)form.append("originalId",id);for(const file of $("#vehiclePhotos").files)form.append("photos",file);const button=$("#saveVehicle");button.disabled=true;button.textContent="Guardando…";$("#formError").textContent="";try{await api("/api/vehicles",{method:"POST",body:form});await load();renderAdmin();clearForm()}catch(err){$("#formError").textContent=err.message}finally{button.disabled=false;button.textContent="Guardar vehículo"}};
+const ORDER_EMAIL = "lucianoribeiroke@gmail.com";
+const originalDetail = detail;
+detail = function(id) {
+  originalDetail(id);
+  const vehicle = vehicles.find(item => item.id === id);
+  if (!vehicle) return;
+  const form = document.createElement("form");
+  form.className = "vehicle-form";
+  form.innerHTML = `<h3 class="wide">Solicitar compra</h3>
+    <label>Nombre<input name="name" autocomplete="name" maxlength="100" required></label>
+    <label>Teléfono<input name="phone" type="tel" autocomplete="tel" maxlength="30" required></label>
+    <label class="wide">Correo<input name="email" type="email" autocomplete="email" maxlength="200" required></label>
+    <label class="wide">Consulta<textarea name="message" rows="3" maxlength="1500"></textarea></label>
+    <p class="wide">Tus datos se incluirán en la solicitud dirigida a LRV Automotores. No se confirma ninguna compra ni se realiza un cobro.</p>
+    <div class="form-actions wide"><button class="button whatsapp" type="submit" value="whatsapp">Enviar por WhatsApp</button>
+    <button class="button secondary" type="submit" value="email">Enviar por correo</button></div>
+    <p class="wide" role="status" id="orderStatus">Se abrirá WhatsApp o tu aplicación de correo. Confirmá allí el envío.</p>`;
+  form.onsubmit = function(event) {
+    event.preventDefault();
+    const data = new FormData(form);
+    const message = `Solicitud de compra — LRV Automotores\nVehículo: ${vehicle.brand} ${vehicle.model} ${vehicle.year}\nReferencia: ${vehicle.id}\nPrecio publicado: ${money(vehicle.price)}\nNombre: ${data.get("name")}\nTeléfono: ${data.get("phone")}\nCorreo: ${data.get("email")}\nConsulta: ${data.get("message") || "Solicito información para comprar este vehículo."}\nSitio: ${location.origin}\nSolicitud sujeta a disponibilidad y confirmación.`;
+    if (event.submitter?.value === "email") {
+      location.href = `mailto:${ORDER_EMAIL}?subject=${encodeURIComponent(`Solicitud: ${vehicle.brand} ${vehicle.model} ${vehicle.year}`)}&body=${encodeURIComponent(message)}`;
+    } else {
+      window.open(`https://wa.me/${WHATSAPP}?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
+    }
+    form.querySelector("[role=status]").textContent = "Confirmá el envío en la aplicación abierta. Si no se abrió, comprobá que tengas configurado el correo o permití abrir WhatsApp.";
+  };
+  $("#detailContent").append(form);
+};
 load();
