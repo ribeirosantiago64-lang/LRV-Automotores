@@ -1,0 +1,8 @@
+{
+  "name": "lrv-automotores-web",
+  "pages_build_output_dir": "./dist",
+  "compatibility_date": "2026-08-15",
+  "services": [
+    {"binding": "BACKEND", "service": "lrv-automotores"}
+  ]
+}

@@ -1,3 +1,5 @@
+import {StorageError,storageDatabase,storageStatus,migrateCatalog,getCatalog,getVehicle,saveVehicle,archiveVehicle,servePhoto} from "./storage.js";
+
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 const COOKIE = "lrv_admin";
@@ -81,7 +83,8 @@ function validateVehicle(raw) {
     type: cleanText(raw.type, 20), km: Number(raw.km || 0), fuel: cleanText(raw.fuel, 50),
     transmission: cleanText(raw.transmission, 50), description: cleanText(raw.description, 3000),
     features: Array.isArray(raw.features) ? raw.features.map((x) => cleanText(x, 100)).filter(Boolean).slice(0, 40) : [],
-    existingImages: Array.isArray(raw.existingImages) ? raw.existingImages.filter((x) => /^https:\/\/(raw\.githubusercontent\.com|github\.com)\//.test(String(x))).slice(0, 20) : [],
+    existingImages: Array.isArray(raw.existingImages) ? raw.existingImages.slice(0, 20) : [],
+    revision: Number(raw.revision),
   };
   if (!v.id || !v.brand || !v.model || !Number.isInteger(v.year) || v.year < 1950 || v.year > 2100 || !Number.isFinite(v.price) || v.price < 0 || !v.description) throw new Error("Datos del vehículo incompletos o inválidos");
   if (!["0 km", "Usado"].includes(v.condition) || !["SUV", "Hatch", "Sedán"].includes(v.type)) throw new Error("Estado o tipo de vehículo inválido");
@@ -113,60 +116,54 @@ async function repositoryState(env) {
   return { head: ref.object.sha, baseTree: commit.tree.sha, entries: tree.tree || [] };
 }
 
-async function createBlob(env, content, encoding = "utf-8") {
-  const blob = await github(env, "/git/blobs", { method: "POST", body: JSON.stringify({ content, encoding }), headers: { "content-type": "application/json" } });
-  return blob.sha;
-}
-
-async function commitTree(env, state, tree, message) {
-  const madeTree = await github(env, "/git/trees", { method: "POST", body: JSON.stringify({ base_tree: state.baseTree, tree }), headers: { "content-type": "application/json" } });
-  const commit = await github(env, "/git/commits", { method: "POST", body: JSON.stringify({ message, tree: madeTree.sha, parents: [state.head] }), headers: { "content-type": "application/json" } });
-  await github(env, `/git/refs/heads/${encodeURIComponent(env.GITHUB_BRANCH)}`, { method: "PATCH", body: JSON.stringify({ sha: commit.sha, force: false }), headers: { "content-type": "application/json" } });
-  return commit.sha;
-}
-
-async function listVehicles(env) {
+async function listLegacyVehicles(env) {
   const state = await repositoryState(env);
   const dataFiles = state.entries.filter((x) => x.type === "blob" && /^vehiculos\/[^/]+\/datos\.json$/.test(x.path));
   const vehicles = await Promise.all(dataFiles.map(async (entry) => {
     const blob = await github(env, `/git/blobs/${entry.sha}`);
-    return JSON.parse(base64ToText(blob.content));
+    const vehicle = JSON.parse(base64ToText(blob.content));
+    // Freeze image references to the same commit as the imported vehicle records.
+    vehicle.images = (vehicle.images || []).map(value => {
+      const url = new URL(value);
+      const prefix = `/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/${env.GITHUB_BRANCH}/`;
+      if (url.origin !== "https://raw.githubusercontent.com" || !url.pathname.startsWith(prefix)) throw new Error("Una foto anterior no pertenece al repositorio del catálogo.");
+      return `https://raw.githubusercontent.com/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/${state.head}/${url.pathname.slice(prefix.length)}`;
+    });
+    return vehicle;
   }));
   return vehicles.sort((a, b) => Number(b.year) - Number(a.year));
 }
 
-async function storeVehicle(env, vehicle, files, originalId) {
-  const state = await repositoryState(env);
-  const id = vehicle.id;
-  const prefix = `vehiculos/${id}/`;
-  if (!originalId && state.entries.some((x) => x.path === `${prefix}datos.json`)) throw new Error("Ya existe un vehículo con esa marca, modelo y año");
-  const oldPrefix = originalId ? `vehiculos/${slugify(originalId)}/` : prefix;
-  const tree = state.entries.filter((x) => x.path.startsWith(oldPrefix)).map((x) => ({ path: x.path, mode: "100644", type: "blob", sha: null }));
-  const imageUrls = [...vehicle.existingImages];
-  let imageNumber = 1;
-  for (const file of files) {
-    if (!(file instanceof File) || !ALLOWED_TYPES.has(file.type) || file.size > MAX_IMAGE) throw new Error("Cada foto debe ser JPG, PNG, WebP o AVIF y pesar menos de 5 MB");
-    const extension = ({ "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/avif": "avif" })[file.type];
-    const path = `${prefix}fotos/foto-${String(imageNumber++).padStart(2, "0")}.${extension}`;
-    const sha = await createBlob(env, bytesToBase64(new Uint8Array(await file.arrayBuffer())), "base64");
-    tree.push({ path, mode: "100644", type: "blob", sha });
-    imageUrls.push(`https://raw.githubusercontent.com/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/${env.GITHUB_BRANCH}/${path}`);
-  }
-  const saved = { ...vehicle, images: imageUrls, updatedAt: new Date().toISOString() };
-  delete saved.existingImages;
-  const dataSha = await createBlob(env, JSON.stringify(saved, null, 2));
-  tree.push({ path: `${prefix}datos.json`, mode: "100644", type: "blob", sha: dataSha });
-  const commit = await commitTree(env, state, tree, `${originalId ? "Actualizar" : "Agregar"} ${vehicle.brand} ${vehicle.model} ${vehicle.year}`);
-  return { vehicle: saved, commit };
+async function loadLegacyPhoto(env, value) {
+  const url = new URL(value);
+  const prefix = `/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/`;
+  if (url.origin !== "https://raw.githubusercontent.com" || !url.pathname.startsWith(prefix)) throw new Error("Origen de foto anterior inválido.");
+  const [ref, ...parts] = url.pathname.slice(prefix.length).split("/");
+  const path = parts.join("/");
+  if (!/^[a-f0-9]{40}$/.test(ref) || !/^vehiculos\/[a-z0-9-]{1,90}\/fotos\/[^/]+\.(?:jpg|jpeg|png|webp|avif)$/i.test(path)) throw new Error("Referencia de foto anterior inválida.");
+  let file = await github(env, `/contents/${path}?ref=${ref}`);
+  if (file.size > MAX_IMAGE) throw new Error("La foto anterior supera el tamaño permitido.");
+  if(file.encoding!=="base64" && /^[a-f0-9]{40}$/.test(file.sha))file=await github(env,`/git/blobs/${file.sha}`);
+  if(file.encoding!=="base64")throw new Error("No se pudo leer la foto anterior.");
+  const content=file.content.replaceAll("\n","");
+  if(typeof Uint8Array.fromBase64==="function")return Uint8Array.fromBase64(content);
+  const binary=atob(content),bytes=new Uint8Array(binary.length);
+  for(let index=0;index<binary.length;index++)bytes[index]=binary.charCodeAt(index);
+  return bytes;
 }
 
-async function deleteVehicle(env, id) {
-  const state = await repositoryState(env);
-  const prefix = `vehiculos/${slugify(id)}/`;
-  const targets = state.entries.filter((x) => x.path.startsWith(prefix) && x.type === "blob");
-  if (!targets.length) throw new Error("Vehículo no encontrado");
-  const tree = targets.map((x) => ({ path: x.path, mode: "100644", type: "blob", sha: null }));
-  return commitTree(env, state, tree, `Eliminar vehículo ${id}`);
+async function importCatalog(env) {
+  await inquiriesDatabase(env);
+  return migrateCatalog(env,listLegacyVehicles,loadLegacyPhoto,2);
+}
+
+async function listVehicles(env, ctx) {
+  const catalog = await getCatalog(env,listLegacyVehicles);
+  const status = await storageStatus(env);
+  if (!status.ready && env.VEHICLE_PHOTOS && ctx?.waitUntil) {
+    ctx.waitUntil(importCatalog(env).catch(error=>console.error(JSON.stringify({message:"catalog_import_pending",error:error.message}))));
+  }
+  return catalog;
 }
 
 async function inquiriesDatabase(env) {
@@ -213,10 +210,14 @@ async function recordInquiry(request, env) {
   const recent = await db.prepare("SELECT COUNT(*) AS count FROM inquiries WHERE ip_hash = ? AND created_at >= ?").bind(ipHash, new Date(Date.now() - 60000).toISOString()).first();
   if (Number(recent.count) >= 5) return responseJson({ error: "Esperá un minuto antes de enviar otra solicitud." }, 429);
   // Take the vehicle snapshot from the server, never from client-supplied prices.
-  const file = await github(env, `/contents/vehiculos/${raw.vehicleId}/datos.json?ref=${encodeURIComponent(env.GITHUB_BRANCH)}`);
-  const vehicle = JSON.parse(base64ToText(file.content));
-  await db.prepare("INSERT INTO inquiries (id, created_at, vehicle_id, vehicle, price, name, phone, email, message, channel, ip_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-    .bind(raw.id, new Date().toISOString(), raw.vehicleId, `${vehicle.brand} ${vehicle.model} ${vehicle.year}`, Number(vehicle.price), name, phone, email, message, raw.channel, ipHash).run();
+  const vehicle = await getVehicle(env,raw.vehicleId,listLegacyVehicles);
+  if (!vehicle) return responseJson({error:"El vehículo ya no está disponible."},404);
+  await storageDatabase(env);
+  const timestamp = new Date().toISOString();
+  await db.batch([
+    db.prepare("INSERT INTO users (id,email,name,phone,updated_at) VALUES (?,?,?,?,?) ON CONFLICT(email) DO UPDATE SET name=excluded.name,phone=excluded.phone,updated_at=excluded.updated_at").bind(crypto.randomUUID(),email.toLowerCase(),name,phone,timestamp),
+    db.prepare("INSERT INTO inquiries (id, created_at, vehicle_id, vehicle, price, name, phone, email, message, channel, ip_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(raw.id,timestamp,raw.vehicleId,`${vehicle.brand} ${vehicle.model} ${vehicle.year}`,Number(vehicle.price),name,phone,email,message,raw.channel,ipHash)
+  ]);
   return responseJson({ ok: true, id: raw.id }, 201);
 }
 
@@ -238,8 +239,8 @@ async function recordVehicleView(request, env) {
   const db = await analyticsDatabase(env);
   const found = await db.prepare("SELECT 1 FROM vehicle_views WHERE vehicle_id = ? AND visit_id = ?").bind(id, visit).first();
   if (found) return responseJson({ ok: true });
-  const file = await github(env, `/contents/vehiculos/${id}/datos.json?ref=${encodeURIComponent(env.GITHUB_BRANCH)}`);
-  const vehicle = JSON.parse(base64ToText(file.content));
+  const vehicle = await getVehicle(env,id,listLegacyVehicles);
+  if (!vehicle) return responseJson({error:"Vehículo no encontrado."},404);
   await db.prepare("INSERT OR IGNORE INTO vehicle_views (vehicle_id, visit_id, vehicle, created_at) VALUES (?, ?, ?, ?)")
     .bind(id, visit, `${vehicle.brand} ${vehicle.model} ${vehicle.year}`, new Date().toISOString()).run();
   return responseJson({ ok: true }, 201);
@@ -270,11 +271,11 @@ async function vehicleStatistics(env, url) {
   return responseJson({ month, items: results });
 }
 
-async function api(request, env) {
+async function api(request, env, ctx) {
   const url = new URL(request.url);
   if (url.pathname === "/api/vehicle-views" && request.method === "POST") return recordVehicleView(request, env);
   if (url.pathname === "/api/inquiries" && request.method === "POST") return recordInquiry(request, env);
-  if (url.pathname === "/api/vehicles" && request.method === "GET") return responseJson(await listVehicles(env));
+  if (url.pathname === "/api/vehicles" && request.method === "GET") return responseJson(await listVehicles(env,ctx));
   if (url.pathname === "/api/login" && request.method === "POST") {
     if (!validateOrigin(request)) return responseJson({ error: "Origen no permitido" }, 403);
     const body = await request.json();
@@ -285,6 +286,8 @@ async function api(request, env) {
   if (url.pathname === "/api/me" && request.method === "GET") return responseJson({ admin: await isAdmin(request, env) });
   if (!(await isAdmin(request, env))) return responseJson({ error: "No autorizado" }, 401);
   if (!validateOrigin(request)) return responseJson({ error: "Origen no permitido" }, 403);
+  if (url.pathname === "/api/storage" && request.method === "GET") return responseJson(await storageStatus(env));
+  if (url.pathname === "/api/storage/migrate" && request.method === "POST") return responseJson(await importCatalog(env));
   if (url.pathname === "/api/statistics" && request.method === "GET") return vehicleStatistics(env, url);
   if (url.pathname === "/api/inquiries" && request.method === "GET") {
     const db = await inquiriesDatabase(env);
@@ -295,30 +298,50 @@ async function api(request, env) {
   if (url.pathname === "/api/vehicles" && request.method === "POST") {
     const length = Number(request.headers.get("content-length") || 0);
     if (length > MAX_TOTAL) return responseJson({ error: "La carga completa supera 26 MB" }, 413);
-    const form = await request.formData();
+    const contentType=request.headers.get("content-type") || "";
+    if(!contentType.startsWith("multipart/form-data"))return responseJson({error:"Formato de carga inválido."},415);
+    const reader=request.body?.getReader();
+    if(!reader)return responseJson({error:"Faltan los datos del vehículo."},400);
+    const chunks=[];let total=0;
+    while(true){
+      const {value,done}=await reader.read();if(done)break;
+      total+=value.byteLength;
+      if(total>MAX_TOTAL){await reader.cancel();return responseJson({error:"La carga completa supera 26 MB."},413);}
+      chunks.push(value);
+    }
+    const bytes=new Uint8Array(total);let cursor=0;
+    for(const chunk of chunks){bytes.set(chunk,cursor);cursor+=chunk.length;}
+    let form;
+    try{form=await new Response(bytes,{headers:{"content-type":contentType}}).formData();}
+    catch{return responseJson({error:"No se pudo leer el formulario del vehículo."},400);}
     const vehicle = validateVehicle(JSON.parse(String(form.get("vehicle") || "{}")));
     const files = form.getAll("photos");
     const uploadedBytes = files.reduce((total, file) => total + (file instanceof File ? file.size : 0), 0);
     if (uploadedBytes > 25_000_000) return responseJson({ error: "Las fotos superan 25 MB en total" }, 413);
     if (!files.length && !vehicle.existingImages.length) return responseJson({ error: "Agregá al menos una foto" }, 400);
-    return responseJson(await storeVehicle(env, vehicle, files, cleanText(form.get("originalId"), 100)), 201);
+    return responseJson(await saveVehicle(env, vehicle, files, cleanText(form.get("originalId"), 100)), 201);
   }
   if (url.pathname.startsWith("/api/vehicles/") && request.method === "DELETE") {
-    return responseJson({ ok: true, commit: await deleteVehicle(env, decodeURIComponent(url.pathname.split("/").pop())) });
+    await archiveVehicle(env,decodeURIComponent(url.pathname.split("/").pop()));
+    return responseJson({ok:true});
   }
   return responseJson({ error: "Ruta no encontrada" }, 404);
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     try {
       const url = new URL(request.url);
-      if (url.pathname.startsWith("/api/")) return await api(request, env);
+      if (url.pathname.startsWith("/api/")) return await api(request, env, ctx);
+      if (url.pathname.startsWith("/media/")) return await servePhoto(request,env);
       return await env.ASSETS.fetch(request);
     } catch (error) {
       console.error(JSON.stringify({ message: "request_failed", error: error instanceof Error ? error.message : String(error) }));
       const message = error instanceof Error && !error.message.startsWith("GitHub respondió") ? error.message : "No se pudo completar la operación";
-      return responseJson({ error: message }, 500);
+      return responseJson({ error: message }, error instanceof StorageError ? error.status : 500);
     }
+  },
+  async scheduled(controller,env,ctx) {
+    ctx.waitUntil(importCatalog(env).catch(error=>console.error(JSON.stringify({message:"catalog_import_pending",error:error.message}))));
   },
 };

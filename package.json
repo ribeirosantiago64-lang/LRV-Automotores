@@ -7,7 +7,10 @@
     "dev": "wrangler dev",
     "check": "wrangler deploy --dry-run",
     "types": "wrangler types",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "build:pages": "node scripts/build-pages.mjs",
+    "deploy:pages": "npm run build:pages && wrangler pages deploy pages/dist --config pages/wrangler.jsonc",
+    "test": "node test-inquiries.mjs && node test-storage.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "latest",

@@ -8,7 +8,7 @@
     "directory": "./public",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*"]
+    "run_worker_first": ["/api/*", "/media/*"]
   },
   "vars": {
     "GITHUB_OWNER": "ribeirosantiago64-lang",
@@ -21,6 +21,10 @@
   "d1_databases": [
     { "binding": "INQUIRIES_DB", "database_name": "lrv-inquiries" }
   ],
+  "r2_buckets": [
+    { "binding": "VEHICLE_PHOTOS", "bucket_name": "lrv-vehicle-photos" }
+  ],
+  "triggers": { "crons": ["*/5 * * * *"] },
   "observability": {
     "enabled": true,
     "logs": { "head_sampling_rate": 1 },
