@@ -51,8 +51,25 @@ function renderStatistics() {
     section.className = "inquiry-history";
     $("#adminList").before(section);
   }
-  section.innerHTML = `<h3>Estadísticas</h3><p>Qué vehículos despiertan más interés.</p><div class="stats-controls"><label>Ordenar por<select id="statsSort"><option value="requests">Más solicitudes</option><option value="views">Más vistos</option></select></label><button class="button secondary" type="button" id="refreshStats">Actualizar estadísticas</button></div><p id="statsStatus" role="status"></p><div class="stats-summary" id="statsSummary"></div><div class="stats-table-wrap"><table class="stats-table"><caption>Interés por vehículo · acumulado</caption><thead><tr><th scope="col">Vehículo</th><th scope="col">Vistas</th><th scope="col">Solicitudes</th><th scope="col">Correo</th><th scope="col">WhatsApp</th></tr></thead><tbody id="statsRows"></tbody></table></div><p class="stats-note">Vistas desde el 02/10/2026: una por vehículo y sesión de pestaña; no son personas únicas. No se cuentan las vistas con sesión de administrador iniciada. Las solicitudes incluyen el historial previo y reflejan la intención de contacto, no la entrega confirmada del mensaje.</p>`;
-  let items = [];
+  section.innerHTML = `<h3>Estadísticas mensuales</h3><p>Qué vehículos despiertan más interés.</p><div class="stats-controls"><label>Mes<input id="statsMonth" type="month" min="2000-01" max="2100-12" required></label><label>Ordenar por<select id="statsSort"><option value="requests">Más solicitudes</option><option value="views">Más vistos</option></select></label><button class="button secondary" type="button" id="refreshStats">Actualizar estadísticas</button><button class="button secondary" type="button" id="downloadStats" disabled>Descargar PDF</button></div><p id="statsStatus" role="status"></p><div class="stats-summary" id="statsSummary"></div><div class="stats-table-wrap"><table class="stats-table"><caption>Interés por vehículo · mes seleccionado</caption><thead><tr><th scope="col">Vehículo</th><th scope="col">Vistas</th><th scope="col">Solicitudes</th><th scope="col">Correo</th><th scope="col">WhatsApp</th></tr></thead><tbody id="statsRows"></tbody></table></div><p class="stats-note">Meses según la hora de Uruguay. Vistas desde el 02/10/2026: una por vehículo y sesión de pestaña; no son personas únicas. No se cuentan las vistas con sesión de administrador iniciada. Las solicitudes del mes incluyen el historial previo y reflejan la intención de contacto, no la entrega confirmada del mensaje.</p>`;
+  let items = [], loadedMonth = "", refreshVersion = 0;
+  const monthInput = section.querySelector("#statsMonth");
+  const download = section.querySelector("#downloadStats");
+  monthInput.value = new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 7);
+  download.onclick = async () => {
+    if (!loadedMonth || loadedMonth !== monthInput.value) return;
+    const exportMonth = loadedMonth;
+    const sort = section.querySelector("#statsSort").value;
+    const ordered = [...items].sort((a,b) => b[sort] - a[sort] || a.vehicle.localeCompare(b.vehicle));
+    try {
+    const {statisticsPdf} = await import("/statistics-pdf.js");
+    const blob = statisticsPdf(exportMonth, ordered);
+    const url = URL.createObjectURL(blob), link = document.createElement("a");
+    link.href = url; link.download = `LRV-estadisticas-${exportMonth}.pdf`;
+    document.body.append(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) { section.querySelector("#statsStatus").textContent = "No se pudo descargar el PDF. Intentá nuevamente."; }
+  };
   function showStatistics() {
     const sort = section.querySelector("#statsSort").value;
     const ordered = [...items].sort((a,b) => b[sort] - a[sort] || a.vehicle.localeCompare(b.vehicle));
@@ -77,18 +94,29 @@ function renderStatistics() {
   }
   section.querySelector("#statsSort").onchange = showStatistics;
   async function refresh() {
+    const version = ++refreshVersion, month = monthInput.value;
     const button = section.querySelector("#refreshStats"), status = section.querySelector("#statsStatus");
+    download.disabled = true; loadedMonth = ""; items = [];
+    section.querySelector("#statsRows").replaceChildren();
+    section.querySelector("#statsSummary").replaceChildren();
+    section.querySelector("caption").textContent = `Interés por vehículo · ${month || "seleccioná un mes"}`;
+    if (!monthInput.validity.valid || !/^(20\d{2}|2100)-(0[1-9]|1[0-2])$/.test(month)) {
+      button.disabled = false; status.textContent = "Seleccioná un mes válido."; return;
+    }
     button.disabled = true; status.textContent = "Cargando estadísticas…";
     try {
-      const data = await api("/api/statistics");
+      const data = await api(`/api/statistics?month=${encodeURIComponent(month)}`);
+      if (version !== refreshVersion) return;
       const byId = new Map(data.items.map(item => [item.vehicle_id, item]));
       for (const vehicle of vehicles) {
         if (!byId.has(vehicle.id)) byId.set(vehicle.id, {vehicle_id:vehicle.id,vehicle:`${vehicle.brand} ${vehicle.model} ${vehicle.year}`,views:0,requests:0,email_requests:0,whatsapp_requests:0});
       }
-      items = [...byId.values()]; showStatistics(); status.textContent = "Estadísticas actualizadas.";
-    } catch (error) { status.textContent = error.message; }
-    finally { button.disabled = false; }
+      items = [...byId.values()]; loadedMonth = data.month;
+      showStatistics(); download.disabled = false; status.textContent = "Estadísticas del mes actualizadas.";
+    } catch (error) { if (version === refreshVersion) status.textContent = error.message; }
+    finally { if (version === refreshVersion) button.disabled = false; }
   }
+  monthInput.onchange = refresh;
   section.querySelector("#refreshStats").onclick = refresh;
   refresh();
 }

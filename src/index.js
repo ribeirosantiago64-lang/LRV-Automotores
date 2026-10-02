@@ -245,24 +245,29 @@ async function recordVehicleView(request, env) {
   return responseJson({ ok: true }, 201);
 }
 
-async function vehicleStatistics(env) {
+async function vehicleStatistics(env, url) {
+  const month = url.searchParams.get("month") || new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 7);
+  if (!/^(20\d{2}|2100)-(0[1-9]|1[0-2])$/.test(month)) return responseJson({ error: "Seleccioná un mes válido." }, 400);
+  // Calendar months in Uruguay (UTC-03:00), including midnight boundaries.
+  const start = new Date(`${month}-01T00:00:00-03:00`);
+  const end = new Date(start); end.setUTCMonth(end.getUTCMonth() + 1);
   const db = await analyticsDatabase(env);
   // Aggregate before joining so views and requests never multiply each other.
   const { results } = await db.prepare(`WITH views AS (
-    SELECT vehicle_id, MAX(vehicle) AS vehicle, COUNT(*) AS views FROM vehicle_views GROUP BY vehicle_id
+    SELECT vehicle_id, MAX(vehicle) AS vehicle, COUNT(*) AS views FROM vehicle_views WHERE created_at >= ? AND created_at < ? GROUP BY vehicle_id
   ), requests AS (
     SELECT vehicle_id, MAX(vehicle) AS vehicle, COUNT(*) AS requests,
       SUM(CASE WHEN channel = 'email' THEN 1 ELSE 0 END) AS email_requests,
       SUM(CASE WHEN channel = 'whatsapp' THEN 1 ELSE 0 END) AS whatsapp_requests
-    FROM inquiries GROUP BY vehicle_id
+    FROM inquiries WHERE created_at >= ? AND created_at < ? GROUP BY vehicle_id
   ), ids AS (SELECT vehicle_id FROM views UNION SELECT vehicle_id FROM requests)
   SELECT ids.vehicle_id, COALESCE(requests.vehicle, views.vehicle) AS vehicle,
     COALESCE(views.views, 0) AS views, COALESCE(requests.requests, 0) AS requests,
     COALESCE(requests.email_requests, 0) AS email_requests,
     COALESCE(requests.whatsapp_requests, 0) AS whatsapp_requests
   FROM ids LEFT JOIN views USING (vehicle_id) LEFT JOIN requests USING (vehicle_id)
-  ORDER BY requests DESC, views DESC, vehicle ASC`).all();
-  return responseJson({ items: results });
+  ORDER BY requests DESC, views DESC, vehicle ASC`).bind(start.toISOString(), end.toISOString(), start.toISOString(), end.toISOString()).all();
+  return responseJson({ month, items: results });
 }
 
 async function api(request, env) {
@@ -280,7 +285,7 @@ async function api(request, env) {
   if (url.pathname === "/api/me" && request.method === "GET") return responseJson({ admin: await isAdmin(request, env) });
   if (!(await isAdmin(request, env))) return responseJson({ error: "No autorizado" }, 401);
   if (!validateOrigin(request)) return responseJson({ error: "Origen no permitido" }, 403);
-  if (url.pathname === "/api/statistics" && request.method === "GET") return vehicleStatistics(env);
+  if (url.pathname === "/api/statistics" && request.method === "GET") return vehicleStatistics(env, url);
   if (url.pathname === "/api/inquiries" && request.method === "GET") {
     const db = await inquiriesDatabase(env);
     const offset = Math.max(0, Math.floor(Number(url.searchParams.get("offset")) || 0));
