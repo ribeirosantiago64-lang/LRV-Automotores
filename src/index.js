@@ -220,8 +220,54 @@ async function recordInquiry(request, env) {
   return responseJson({ ok: true, id: raw.id }, 201);
 }
 
+async function analyticsDatabase(env) {
+  const db = await inquiriesDatabase(env);
+  await db.prepare(`CREATE TABLE IF NOT EXISTS vehicle_views (
+    vehicle_id TEXT NOT NULL, visit_id TEXT NOT NULL, vehicle TEXT NOT NULL,
+    created_at TEXT NOT NULL, PRIMARY KEY (vehicle_id, visit_id)
+  )`).run();
+  return db;
+}
+
+async function recordVehicleView(request, env) {
+  if (request.headers.get("origin") !== new URL(request.url).origin) return responseJson({ error: "Origen no permitido" }, 403);
+  const url = new URL(request.url);
+  const id = url.searchParams.get("vehicle"), visit = url.searchParams.get("visit");
+  if (!/^[a-z0-9-]{1,90}$/.test(id || "") || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(visit || "")) return responseJson({ error: "Datos inválidos" }, 400);
+  if (await isAdmin(request, env)) return responseJson({ ok: true });
+  const db = await analyticsDatabase(env);
+  const found = await db.prepare("SELECT 1 FROM vehicle_views WHERE vehicle_id = ? AND visit_id = ?").bind(id, visit).first();
+  if (found) return responseJson({ ok: true });
+  const file = await github(env, `/contents/vehiculos/${id}/datos.json?ref=${encodeURIComponent(env.GITHUB_BRANCH)}`);
+  const vehicle = JSON.parse(base64ToText(file.content));
+  await db.prepare("INSERT OR IGNORE INTO vehicle_views (vehicle_id, visit_id, vehicle, created_at) VALUES (?, ?, ?, ?)")
+    .bind(id, visit, `${vehicle.brand} ${vehicle.model} ${vehicle.year}`, new Date().toISOString()).run();
+  return responseJson({ ok: true }, 201);
+}
+
+async function vehicleStatistics(env) {
+  const db = await analyticsDatabase(env);
+  // Aggregate before joining so views and requests never multiply each other.
+  const { results } = await db.prepare(`WITH views AS (
+    SELECT vehicle_id, MAX(vehicle) AS vehicle, COUNT(*) AS views FROM vehicle_views GROUP BY vehicle_id
+  ), requests AS (
+    SELECT vehicle_id, MAX(vehicle) AS vehicle, COUNT(*) AS requests,
+      SUM(CASE WHEN channel = 'email' THEN 1 ELSE 0 END) AS email_requests,
+      SUM(CASE WHEN channel = 'whatsapp' THEN 1 ELSE 0 END) AS whatsapp_requests
+    FROM inquiries GROUP BY vehicle_id
+  ), ids AS (SELECT vehicle_id FROM views UNION SELECT vehicle_id FROM requests)
+  SELECT ids.vehicle_id, COALESCE(requests.vehicle, views.vehicle) AS vehicle,
+    COALESCE(views.views, 0) AS views, COALESCE(requests.requests, 0) AS requests,
+    COALESCE(requests.email_requests, 0) AS email_requests,
+    COALESCE(requests.whatsapp_requests, 0) AS whatsapp_requests
+  FROM ids LEFT JOIN views USING (vehicle_id) LEFT JOIN requests USING (vehicle_id)
+  ORDER BY requests DESC, views DESC, vehicle ASC`).all();
+  return responseJson({ items: results });
+}
+
 async function api(request, env) {
   const url = new URL(request.url);
+  if (url.pathname === "/api/vehicle-views" && request.method === "POST") return recordVehicleView(request, env);
   if (url.pathname === "/api/inquiries" && request.method === "POST") return recordInquiry(request, env);
   if (url.pathname === "/api/vehicles" && request.method === "GET") return responseJson(await listVehicles(env));
   if (url.pathname === "/api/login" && request.method === "POST") {
@@ -234,6 +280,7 @@ async function api(request, env) {
   if (url.pathname === "/api/me" && request.method === "GET") return responseJson({ admin: await isAdmin(request, env) });
   if (!(await isAdmin(request, env))) return responseJson({ error: "No autorizado" }, 401);
   if (!validateOrigin(request)) return responseJson({ error: "Origen no permitido" }, 403);
+  if (url.pathname === "/api/statistics" && request.method === "GET") return vehicleStatistics(env);
   if (url.pathname === "/api/inquiries" && request.method === "GET") {
     const db = await inquiriesDatabase(env);
     const offset = Math.max(0, Math.floor(Number(url.searchParams.get("offset")) || 0));

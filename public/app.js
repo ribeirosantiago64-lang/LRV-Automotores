@@ -28,8 +28,73 @@ const CONTACT_FORM_ENDPOINT = "https://formspree.io/f/mnpnypdl";
 const automaticEmailEnabled = /^https:\/\/formspree\.io\/f\/[a-zA-Z0-9]+$/.test(CONTACT_FORM_ENDPOINT);
 const originalDetail = detail;
 const originalRenderAdmin = renderAdmin;
+let statisticsVisitId;
+try {
+  statisticsVisitId = sessionStorage.getItem("lrv-stats-visit");
+  if (!/^[0-9a-f-]{36}$/.test(statisticsVisitId || "")) {
+    statisticsVisitId = crypto.randomUUID();
+    sessionStorage.setItem("lrv-stats-visit", statisticsVisitId);
+  }
+} catch { statisticsVisitId = crypto.randomUUID(); }
+const recordedViews = new Set();
+function trackVehicleView(id) {
+  if (recordedViews.has(id)) return;
+  recordedViews.add(id);
+  api(`/api/vehicle-views?vehicle=${encodeURIComponent(id)}&visit=${statisticsVisitId}`, {method: "POST", keepalive: true})
+    .catch(() => recordedViews.delete(id));
+}
+
+function renderStatistics() {
+  let section = $("#adminStatistics");
+  if (!section) {
+    section = document.createElement("section"); section.id = "adminStatistics";
+    section.className = "inquiry-history";
+    $("#adminList").before(section);
+  }
+  section.innerHTML = `<h3>Estadísticas</h3><p>Qué vehículos despiertan más interés.</p><div class="stats-controls"><label>Ordenar por<select id="statsSort"><option value="requests">Más solicitudes</option><option value="views">Más vistos</option></select></label><button class="button secondary" type="button" id="refreshStats">Actualizar estadísticas</button></div><p id="statsStatus" role="status"></p><div class="stats-summary" id="statsSummary"></div><div class="stats-table-wrap"><table class="stats-table"><caption>Interés por vehículo · acumulado</caption><thead><tr><th scope="col">Vehículo</th><th scope="col">Vistas</th><th scope="col">Solicitudes</th><th scope="col">Correo</th><th scope="col">WhatsApp</th></tr></thead><tbody id="statsRows"></tbody></table></div><p class="stats-note">Vistas desde el 02/10/2026: una por vehículo y sesión de pestaña; no son personas únicas. No se cuentan las vistas con sesión de administrador iniciada. Las solicitudes incluyen el historial previo y reflejan la intención de contacto, no la entrega confirmada del mensaje.</p>`;
+  let items = [];
+  function showStatistics() {
+    const sort = section.querySelector("#statsSort").value;
+    const ordered = [...items].sort((a,b) => b[sort] - a[sort] || a.vehicle.localeCompare(b.vehicle));
+    const rows = section.querySelector("#statsRows"); rows.replaceChildren();
+    for (const item of ordered) {
+      const row = document.createElement("tr");
+      for (const value of [item.vehicle, item.views, item.requests, item.email_requests, item.whatsapp_requests]) {
+        const cell = document.createElement("td"); cell.textContent = value; row.append(cell);
+      }
+      rows.append(row);
+    }
+    const summary = section.querySelector("#statsSummary"); summary.replaceChildren();
+    for (const [field, label] of [["requests","Más solicitudes"],["views","Más visto"]]) {
+      const highest = Math.max(0, ...items.map(item => item[field]));
+      const leaders = items.filter(item => item[field] === highest && highest > 0);
+      const card = document.createElement("div"); card.className = "stats-card";
+      const title = document.createElement("strong"); title.textContent = label;
+      const name = document.createElement("p"); name.textContent = leaders.length ? leaders.map(item => item.vehicle).join(" · ") : "Todavía sin registros";
+      const count = document.createElement("span"); count.textContent = `${highest} ${field === "views" ? "vistas" : "solicitudes"}${leaders.length > 1 ? " por vehículo (empate)" : ""}`;
+      card.append(title,name,count); summary.append(card);
+    }
+  }
+  section.querySelector("#statsSort").onchange = showStatistics;
+  async function refresh() {
+    const button = section.querySelector("#refreshStats"), status = section.querySelector("#statsStatus");
+    button.disabled = true; status.textContent = "Cargando estadísticas…";
+    try {
+      const data = await api("/api/statistics");
+      const byId = new Map(data.items.map(item => [item.vehicle_id, item]));
+      for (const vehicle of vehicles) {
+        if (!byId.has(vehicle.id)) byId.set(vehicle.id, {vehicle_id:vehicle.id,vehicle:`${vehicle.brand} ${vehicle.model} ${vehicle.year}`,views:0,requests:0,email_requests:0,whatsapp_requests:0});
+      }
+      items = [...byId.values()]; showStatistics(); status.textContent = "Estadísticas actualizadas.";
+    } catch (error) { status.textContent = error.message; }
+    finally { button.disabled = false; }
+  }
+  section.querySelector("#refreshStats").onclick = refresh;
+  refresh();
+}
 renderAdmin = function() {
   originalRenderAdmin();
+  renderStatistics();
   let history = $("#inquiryHistory");
   if (!history) {
     history = document.createElement("section");
@@ -73,11 +138,12 @@ renderAdmin = function() {
   fetchHistory(true);
 };
 const originalLogout = $("#logout").onclick;
-$("#logout").onclick = async () => { await originalLogout(); $("#inquiryHistory")?.remove(); };
+$("#logout").onclick = async () => { await originalLogout(); $("#inquiryHistory")?.remove(); $("#adminStatistics")?.remove(); };
 detail = function(id) {
   originalDetail(id);
   const vehicle = vehicles.find(item => item.id === id);
   if (!vehicle) return;
+  trackVehicleView(id);
   const form = document.createElement("form");
   form.className = "vehicle-form";
   // All vehicle requests use the form so the administrator has customer details.
