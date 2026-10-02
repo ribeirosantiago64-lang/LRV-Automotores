@@ -182,6 +182,7 @@ detail = function(id) {
     <label class="wide">Correo<input name="email" type="email" autocomplete="email" maxlength="200" required></label>
     <label class="wide">Consulta<textarea name="message" rows="3" maxlength="1500" required></textarea></label>
     <p class="wide">Usaremos tus datos para responder sobre este vehículo. No se confirma ninguna compra ni se realiza un cobro.${automaticEmailEnabled ? " El envío por correo se procesa mediante Formspree." : ""}</p>
+    <p class="wide form-notice" id="formCompletionNotice" aria-live="polite" aria-atomic="true">Completá todos los campos del formulario para continuar.</p>
     <div class="form-actions wide"><button class="button whatsapp" type="submit" value="whatsapp">Enviar por WhatsApp</button>
     <button class="button secondary" type="submit" value="email" ${automaticEmailEnabled ? "" : "disabled"}>Enviar solicitud por correo</button></div>
     <p class="wide" role="status" id="orderStatus">${automaticEmailEnabled ? "La solicitud por correo se envía desde este formulario, sin abrir tu aplicación de correo." : "El envío automático por correo todavía no está disponible. Podés consultar por WhatsApp."}</p>`;
@@ -192,6 +193,13 @@ detail = function(id) {
       field.setCustomValidity(field.value.trim() ? "" : "Completá este campo.");
     }
     const complete = form.checkValidity();
+    const notice = form.querySelector("#formCompletionNotice");
+    const missing = ["name", "phone", "email", "message"].some(name => !form.elements.namedItem(name).value.trim());
+    notice.hidden = complete;
+    notice.textContent = missing ? "Completá todos los campos del formulario para continuar."
+      : !form.elements.namedItem("phone").validity.valid ? "El celular debe tener exactamente 9 números para continuar."
+      : !form.elements.namedItem("email").validity.valid ? "Ingresá un correo electrónico válido para continuar."
+      : "Revisá los datos del formulario para continuar.";
     form.querySelectorAll("button").forEach(button => {
       button.disabled = pending || !complete || (button.value === "email" && !automaticEmailEnabled);
     });
