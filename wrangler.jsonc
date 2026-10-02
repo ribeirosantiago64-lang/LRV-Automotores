@@ -22,7 +22,7 @@
     { "binding": "INQUIRIES_DB", "database_name": "lrv-inquiries" }
   ],
   "r2_buckets": [
-    { "binding": "VEHICLE_PHOTOS", "bucket_name": "lrv-vehicle-photos" }
+    { "binding": "VEHICLE_PHOTOS" }
   ],
   "triggers": { "crons": ["*/5 * * * *"] },
   "observability": {

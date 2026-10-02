@@ -8,7 +8,7 @@
 | Cloudflare Pages | Sitio público, desde `pages/dist` |
 | Cloudflare Workers | Backend `lrv-automotores`, autenticación, catálogo y solicitudes |
 | Cloudflare D1 | Base existente `lrv-inquiries`: vehículos, contactos, consultas, vistas y estado de migración |
-| Cloudflare R2 | Bucket privado `lrv-vehicle-photos`: fotografías |
+| Cloudflare R2 | Bucket privado asociado al binding `VEHICLE_PHOTOS`: fotografías |
 
 Los contactos de la tabla `users` se crean al enviar una consulta. No son cuentas con contraseña ni se requiere registrar una cuenta para consultar un vehículo. La autenticación del administrador sigue usando los secretos actuales del Worker.
 
@@ -33,7 +33,7 @@ Después de completar la importación, `GET /api/vehicles` devuelve fotografías
 
 ## Backend
 
-El archivo `wrangler.jsonc` conserva el nombre y la base D1 actuales. Añade el binding `VEHICLE_PHOTOS` para R2. Wrangler provisiona el bucket al desplegar cuando la cuenta tiene R2 habilitado. Si Cloudflare solicita activar R2 o agregar facturación, debe completarlo el titular de la cuenta; no hay que borrar ni recrear D1.
+El archivo `wrangler.jsonc` conserva el nombre y la base D1 actuales. Añade el binding `VEHICLE_PHOTOS` sin fijar un nombre de bucket: así Wrangler puede provisionar uno automáticamente cuando la cuenta tiene R2 habilitado. El nombre generado comienza por el nombre del Worker y se consulta en sus bindings. Si Cloudflare solicita activar R2 o agregar facturación, debe completarlo el titular de la cuenta; no hay que borrar ni recrear D1.
 
 Secretos actuales:
 
