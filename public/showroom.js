@@ -30,6 +30,17 @@ document.addEventListener('keydown',e=>{if($('#galleryViewer').hidden)return;if(
 detail=function(id){showroomDetail(id);const v=vehicles.find(v=>v.id===id);if(!v)return;
  recentlyViewed=[id,...recentlyViewed.filter(x=>x!==id)].slice(0,6);try{localStorage.setItem('lrv-recent',JSON.stringify(recentlyViewed));}catch{}renderRecent();
  const form=$('#detailContent form');
+ const layout=$('#detailContent .detail-layout'),visual=layout?.firstElementChild,summary=layout?.lastElementChild;
+ if(summary){
+  summary.classList.add('vehicle-summary-panel');
+  const badges=summary.querySelector('.badges');
+  if(badges&&!badges.querySelector('.availability')){const availability=document.createElement('span');availability.className='badge availability';availability.textContent=v.availability||'Disponible';badges.append(availability);}
+  const specs=summary.querySelector('.specs');
+  if(specs){const heading=document.createElement('h3');heading.className='specs-title';heading.textContent='Características principales';specs.before(heading);}
+  const actions=$('#detailContent .detail-actions');if(actions)summary.append(actions);
+  if(form){form.classList.add('detail-contact-form');summary.append(form);}
+ }
+ if(visual){visual.classList.add('vehicle-gallery-panel');const hint=document.createElement('p');hint.className='photo-expand-hint';hint.textContent='Tocá una imagen para ampliarla';visual.prepend(hint);}
  if(v.demo){form.hidden=true;$('#detailContent .visit-action').hidden=true;const banner=document.createElement('p');banner.className='demo-notice';banner.textContent='DEMOSTRACIÓN · Este vehículo no está a la venta. Precio, kilometraje y datos simulados; fotografía de referencia de otro mercado.';$('#detailContent').prepend(banner);}
  const openGallery=(index,returnElement)=>{galleryImages=v.images||[];if(!galleryImages.length)return;galleryIndex=index;galleryReturn=returnElement;$('#galleryImage').alt=`${v.brand} ${v.model}${v.demo?' · referencia':''}`;updateGallery();$('#galleryViewer').hidden=false;$('#galleryClose').focus();};
  const bindGalleryTrigger=(image,index)=>{if(!image)return;image.tabIndex=0;image.setAttribute('role','button');image.setAttribute('aria-label',`Ampliar foto ${index+1} de ${v.brand} ${v.model}`);image.onclick=()=>openGallery(index,image);image.onkeydown=event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();openGallery(index,image);}};};
