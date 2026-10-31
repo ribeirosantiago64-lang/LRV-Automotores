@@ -369,7 +369,7 @@ export default {
         const escape=value=>String(value||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
         const title=`${vehicle.brand} ${vehicle.model} ${vehicle.year} | LRV Automotores`;
         const description=`USD ${vehicle.price} · ${vehicle.km} km · ${vehicle.transmission}. ${vehicle.description}`.slice(0,250);
-        const asset=await env.ASSETS.fetch(new Request(new URL('/index.html',url),request));
+        const asset=await env.ASSETS.fetch(new Request(new URL('/',url),request));
         return new HTMLRewriter().on('title',{element(e){e.setInnerContent(title);}}).on('meta[name="description"]',{element(e){e.setAttribute('content',description);}}).on('head',{element(e){e.append(`<link rel="canonical" href="${escape(url.origin+url.pathname)}"><meta property="og:title" content="${escape(title)}"><meta property="og:description" content="${escape(description)}"><meta property="og:url" content="${escape(url.origin+url.pathname)}"><meta property="og:type" content="website"><meta property="og:image" content="${escape(new URL(vehicle.images[0],url.origin).href)}">`,{html:true});}}).transform(asset);
       }
       return await env.ASSETS.fetch(request);
