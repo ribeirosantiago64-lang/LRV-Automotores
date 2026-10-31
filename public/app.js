@@ -122,12 +122,6 @@ function renderStatistics() {
 }
 renderAdmin = function() {
   originalRenderAdmin();
-  const storageNote = document.querySelector("#adminModal .admin-note");
-  api("/api/storage").then(status => {
-    storageNote.textContent = status.ready
-      ? "El catálogo se guarda en Cloudflare D1 y las fotografías en Cloudflare R2. Los cambios se muestran para todos."
-      : "Estamos trasladando el catálogo a Cloudflare. Los vehículos actuales siguen disponibles; esperá a que termine la importación antes de editarlos.";
-  }).catch(() => { storageNote.textContent = "No se pudo comprobar el almacenamiento del catálogo. Intentá nuevamente más tarde."; });
   renderStatistics();
   let history = $("#inquiryHistory");
   if (!history) {
@@ -136,7 +130,7 @@ renderAdmin = function() {
     history.className = "inquiry-history";
     $("#adminList").before(history);
   }
-  history.innerHTML = `<h3>Historial de solicitudes</h3><p>Registros del formulario. El canal indica la opción elegida; no confirma la entrega del correo o mensaje.</p><button class="button secondary" type="button" id="refreshInquiries">Actualizar historial</button><div id="inquiryRows" aria-live="polite"></div><button class="button secondary" type="button" id="moreInquiries" hidden>Ver anteriores</button>`;
+  history.innerHTML = `<h3>Historial de solicitudes</h3><p>Se guarda de forma privada en la base de datos. El canal indica la opción elegida; no confirma la entrega. “Eliminar definitivamente” borra la solicitud, sus notas y el contacto si no tiene otros registros.</p><button class="button secondary" type="button" id="refreshInquiries">Actualizar historial</button><div id="inquiryRows" aria-live="polite"></div><button class="button secondary" type="button" id="moreInquiries" hidden>Ver anteriores</button>`;
   let offset = 0;
   async function fetchHistory(reset = false) {
     const rows = history.querySelector("#inquiryRows");
@@ -159,6 +153,15 @@ renderAdmin = function() {
           const strong = document.createElement("strong"); strong.textContent = `${label}: `;
           p.append(strong, document.createTextNode(value)); article.append(p);
         }
+        const remove = document.createElement("button");
+        remove.type = "button"; remove.className = "delete inquiry-delete"; remove.textContent = "Eliminar definitivamente";
+        remove.onclick = async () => {
+          if (!confirm("¿Eliminar definitivamente esta solicitud y sus datos? Esta acción no se puede deshacer.")) return;
+          remove.disabled = true;
+          try { await api(`/api/inquiries/${encodeURIComponent(inquiry.id)}`, {method: "DELETE"}); await fetchHistory(true); renderStatistics(); }
+          catch (error) { alert(error.message); remove.disabled = false; }
+        };
+        article.append(remove);
         rows.append(article);
       }
       offset += result.items.length;

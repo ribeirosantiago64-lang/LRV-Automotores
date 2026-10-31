@@ -323,6 +323,19 @@ async function api(request, env, ctx) {
     const { results } = await db.prepare("SELECT id, created_at, vehicle_id, vehicle, price, name, phone, email, message, channel FROM inquiries ORDER BY created_at DESC, id DESC LIMIT 51 OFFSET ?").bind(offset).all();
     return responseJson({ items: results.slice(0, 50), hasMore: results.length > 50 });
   }
+  if (url.pathname.startsWith("/api/inquiries/") && request.method === "DELETE") {
+    const id = decodeURIComponent(url.pathname.slice("/api/inquiries/".length));
+    if (!/^[0-9a-f-]{36}$/.test(id)) return responseJson({ error: "Solicitud inválida" }, 400);
+    const db = await inquiriesDatabase(env);
+    if (!await db.prepare("SELECT id FROM inquiries WHERE id = ?").bind(id).first()) return responseJson({ error: "Solicitud no encontrada" }, 404);
+    await db.prepare("CREATE TABLE IF NOT EXISTS inquiry_followup (id TEXT PRIMARY KEY,stage TEXT NOT NULL,note TEXT NOT NULL,updated_at TEXT NOT NULL)").run();
+    await db.batch([
+      db.prepare("DELETE FROM inquiry_followup WHERE id = ?").bind(id),
+      db.prepare("DELETE FROM users WHERE email = (SELECT lower(email) FROM inquiries WHERE id = ?) AND NOT EXISTS (SELECT 1 FROM inquiries WHERE lower(email) = users.email AND id <> ?)").bind(id,id),
+      db.prepare("DELETE FROM inquiries WHERE id = ?").bind(id)
+    ]);
+    return responseJson({ ok: true });
+  }
   if (url.pathname === "/api/vehicles" && request.method === "POST") {
     const length = Number(request.headers.get("content-length") || 0);
     if (length > MAX_TOTAL) return responseJson({ error: "La carga completa supera 26 MB" }, 413);

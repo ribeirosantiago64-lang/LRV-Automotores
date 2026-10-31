@@ -66,7 +66,21 @@ try {
   assert.equal(february.items[0].views,1);
   assert.equal(february.items[0].requests,0);
   assert.deepEqual((await (await monthly('2024-12')).json()).items,[]);
+  const deletedId=crypto.randomUUID(), deletedEmail='eliminar@example.com';
+  await db.prepare("INSERT INTO users (id,email,name,phone,updated_at) VALUES (?,?,?,?,?)").bind(crypto.randomUUID(),deletedEmail,'Eliminar','097135114',new Date().toISOString()).run();
+  await db.prepare("INSERT INTO inquiries VALUES (?,?,?,?,?,?,?,?,?,?,?)").bind(deletedId,new Date().toISOString(),'prueba-vehiculo-2026','Prueba Vehículo 2026',12345,'Eliminar','097135114',deletedEmail,'Eliminar definitivamente','email','delete-hash').run();
+  await db.exec("CREATE TABLE IF NOT EXISTS inquiry_followup (id TEXT PRIMARY KEY,stage TEXT NOT NULL,note TEXT NOT NULL,updated_at TEXT NOT NULL)");
+  await db.prepare("INSERT INTO inquiry_followup VALUES (?,?,?,?)").bind(deletedId,'Nueva','Dato privado',new Date().toISOString()).run();
+  const remove=url=>mf.dispatchFetch(`${origin}${url}`,{method:'DELETE',headers:{origin,cookie}});
+  assert.equal((await mf.dispatchFetch(`${origin}/api/inquiries/${deletedId}`,{method:'DELETE',headers:{origin}})).status,401);
+  assert.equal((await mf.dispatchFetch(`${origin}/api/inquiries/${deletedId}`,{method:'DELETE',headers:{origin:'https://other.test',cookie}})).status,403);
+  assert.equal((await remove(`/api/inquiries/${deletedId}`)).status,200);
+  assert.equal((await db.prepare("SELECT COUNT(*) count FROM inquiries WHERE id=?").bind(deletedId).first()).count,0);
+  assert.equal((await db.prepare("SELECT COUNT(*) count FROM inquiry_followup WHERE id=?").bind(deletedId).first()).count,0);
+  assert.equal((await db.prepare("SELECT COUNT(*) count FROM users WHERE email=?").bind(deletedEmail).first()).count,0);
+  assert.equal((await remove(`/api/inquiries/${deletedId}`)).status,404);
   console.log('PASS: monthly filtering, Uruguay boundaries, empty months and invalid months.');
   console.log('PASS: statistics access, deduplicated views, admin exclusion, independent aggregates and channel counts.');
+  console.log('PASS: permanent inquiry deletion, follow-up cleanup, contact cleanup and admin protection.');
   console.log('PASS: private history, validation, origin check, honeypot, idempotency, server vehicle snapshot and both channels.');
 } finally {await mf.dispose();}
