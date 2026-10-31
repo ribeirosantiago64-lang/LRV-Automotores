@@ -1,3 +1,4 @@
+import {seedShowcase} from "./showcase.js";
 import {StorageError,storageDatabase,storageStatus,migrateCatalog,getCatalog,getVehicle,saveVehicle,archiveVehicle,servePhoto} from "./storage.js";
 
 const enc = new TextEncoder();
@@ -90,7 +91,7 @@ function validateVehicle(raw) {
     inspection: cleanText(raw.inspection,1500), priceIncludes: cleanText(raw.priceIncludes,800),
   };
   if (!v.id || !v.brand || !v.model || !Number.isInteger(v.year) || v.year < 1950 || v.year > 2100 || !Number.isFinite(v.price) || v.price < 0 || !v.description) throw new Error("Datos del vehículo incompletos o inválidos");
-  if (!["0 km", "Usado"].includes(v.condition) || !["SUV", "Hatch", "Sedán"].includes(v.type)) throw new Error("Estado o tipo de vehículo inválido");
+  if (!["0 km", "Usado"].includes(v.condition) || !["SUV", "Hatch", "Sedán", "Pickup"].includes(v.type)) throw new Error("Estado o tipo de vehículo inválido");
   return v;
 }
 
@@ -166,6 +167,7 @@ async function listVehicles(env, ctx) {
   if (!status.ready && env.VEHICLE_PHOTOS && ctx?.waitUntil) {
     ctx.waitUntil(importCatalog(env).catch(error=>console.error(JSON.stringify({message:"catalog_import_pending",error:error.message}))));
   }
+  if (ctx?.waitUntil) ctx.waitUntil(seedShowcase(env).catch(e=>console.error("showcase_import_pending",e.message)));
   return catalog;
 }
 
@@ -215,6 +217,7 @@ async function recordInquiry(request, env) {
   // Take the vehicle snapshot from the server, never from client-supplied prices.
   const vehicle = await getVehicle(env,raw.vehicleId,listLegacyVehicles);
   if (!vehicle) return responseJson({error:"El vehículo ya no está disponible."},404);
+  if (vehicle.demo) return responseJson({error:"Vehículo de demostración: no está ofrecido a la venta."},409);
   if (vehicle.availability==='Vendido') return responseJson({error:'Este vehículo fue vendido. Consultá por otras opciones del catálogo.'},409);
   await storageDatabase(env);
   const timestamp = new Date().toISOString();
@@ -245,6 +248,7 @@ async function recordVehicleView(request, env) {
   if (found) return responseJson({ ok: true });
   const vehicle = await getVehicle(env,id,listLegacyVehicles);
   if (!vehicle) return responseJson({error:"Vehículo no encontrado."},404);
+  if(vehicle.demo)return responseJson({ok:true});
   await db.prepare("INSERT OR IGNORE INTO vehicle_views (vehicle_id, visit_id, vehicle, created_at) VALUES (?, ?, ?, ?)")
     .bind(id, visit, `${vehicle.brand} ${vehicle.model} ${vehicle.year}`, new Date().toISOString()).run();
   return responseJson({ ok: true }, 201);
@@ -360,7 +364,7 @@ export default {
       if (url.pathname.startsWith("/media/")) return await servePhoto(request,env);
       if (url.pathname === '/robots.txt') return new Response(`User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: ${url.origin}/sitemap.xml\n`,{headers:{'content-type':'text/plain'}});
       if (url.pathname === '/sitemap.xml') {
-        const items=await listVehicles(env,ctx);
+        const items=(await listVehicles(env,ctx)).filter(v=>!v.demo);
         return new Response(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>${url.origin}/</loc></url>${items.map(v=>`<url><loc>${url.origin}/vehiculo/${encodeURIComponent(v.id)}</loc></url>`).join('')}</urlset>`,{headers:{'content-type':'application/xml'}});
       }
       if (url.pathname.startsWith('/vehiculo/')) {
@@ -370,7 +374,7 @@ export default {
         const title=`${vehicle.brand} ${vehicle.model} ${vehicle.year} | LRV Automotores`;
         const description=`USD ${vehicle.price} · ${vehicle.km} km · ${vehicle.transmission}. ${vehicle.description}`.slice(0,250);
         const asset=await env.ASSETS.fetch(new Request(new URL('/',url),request));
-        return new HTMLRewriter().on('title',{element(e){e.setInnerContent(title);}}).on('meta[name="description"]',{element(e){e.setAttribute('content',description);}}).on('head',{element(e){e.append(`<link rel="canonical" href="${escape(url.origin+url.pathname)}"><meta property="og:title" content="${escape(title)}"><meta property="og:description" content="${escape(description)}"><meta property="og:url" content="${escape(url.origin+url.pathname)}"><meta property="og:type" content="website"><meta property="og:image" content="${escape(new URL(vehicle.images[0],url.origin).href)}">`,{html:true});}}).transform(asset);
+        return new HTMLRewriter().on('title',{element(e){e.setInnerContent(title);}}).on('meta[name="description"]',{element(e){e.setAttribute('content',description);}}).on('head',{element(e){e.append(`${vehicle.demo?'<meta name="robots" content="noindex,follow">':''}<link rel="canonical" href="${escape(url.origin+url.pathname)}"><meta property="og:title" content="${escape(title)}"><meta property="og:description" content="${escape(description)}"><meta property="og:url" content="${escape(url.origin+url.pathname)}"><meta property="og:type" content="website"><meta property="og:image" content="${escape(new URL(vehicle.images[0],url.origin).href)}">`,{html:true});}}).transform(asset);
       }
       return await env.ASSETS.fetch(request);
     } catch (error) {
@@ -380,6 +384,7 @@ export default {
     }
   },
   async scheduled(controller,env,ctx) {
+    ctx.waitUntil(seedShowcase(env).catch(e=>console.error("showcase_import_pending",e.message)));
     ctx.waitUntil(importCatalog(env).catch(error=>console.error(JSON.stringify({message:"catalog_import_pending",error:error.message}))));
   },
 };

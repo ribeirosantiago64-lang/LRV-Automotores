@@ -108,7 +108,7 @@ function renderStatistics() {
       const data = await api(`/api/statistics?month=${encodeURIComponent(month)}`);
       if (version !== refreshVersion) return;
       const byId = new Map(data.items.map(item => [item.vehicle_id, item]));
-      for (const vehicle of vehicles) {
+      for (const vehicle of vehicles.filter(v=>!v.demo)) {
         if (!byId.has(vehicle.id)) byId.set(vehicle.id, {vehicle_id:vehicle.id,vehicle:`${vehicle.brand} ${vehicle.model} ${vehicle.year}`,views:0,requests:0,email_requests:0,whatsapp_requests:0});
       }
       items = [...byId.values()]; loadedMonth = data.month;

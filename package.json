@@ -10,7 +10,7 @@
     "deploy": "wrangler deploy",
     "build:pages": "node scripts/build-pages.mjs",
     "deploy:pages": "npm run build:pages && wrangler pages deploy pages/dist --config pages/wrangler.jsonc",
-    "test": "node test-inquiries.mjs && node test-storage.mjs"
+    "test": "node test-inquiries.mjs && node test-storage.mjs && node test-showcase.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "latest",

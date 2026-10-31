@@ -7,7 +7,7 @@ const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42
 const legacy=Array.from({length:3},(_,i)=>({id:'legacy-'+i,brand:'Marca',model:'Modelo '+i,year:2026,price:20000,condition:'Usado',type:'SUV',km:100,fuel:'Nafta',transmission:'Automática',description:'Vehículo existente',images:[`https://raw.githubusercontent.com/test/test/main/vehiculos/legacy-${i}/fotos/foto-01.png`]}));
 let rejectThird=true,githubReads=0;
 const mf=new Miniflare(convertV4MiniflareOptions({workers:[
-  {name:'backend',modules:[{type:'ESModule',path:'src/index.js',contents:readFileSync('src/index.js','utf8')},{type:'ESModule',path:'src/storage.js',contents:readFileSync('src/storage.js','utf8')}],compatibilityDate:'2026-08-15',d1Databases:['INQUIRIES_DB'],r2Buckets:['VEHICLE_PHOTOS'],bindings:{ADMIN_PASSWORD:'local-test-password',SESSION_SECRET:'local-test-secret-only',GITHUB_OWNER:'test',GITHUB_REPO:'test',GITHUB_BRANCH:'main',GITHUB_TOKEN:'local'},
+  {name:'backend',modules:[{type:'ESModule',path:'src/index.js',contents:readFileSync('src/index.js','utf8')},{type:'ESModule',path:'src/storage.js',contents:readFileSync('src/storage.js','utf8')},{type:'ESModule',path:'src/showcase.js',contents:readFileSync('src/showcase.js','utf8')},{type:'ESModule',path:'src/showcase-data.js',contents:readFileSync('src/showcase-data.js','utf8')}],compatibilityDate:'2026-08-15',d1Databases:['INQUIRIES_DB'],r2Buckets:['VEHICLE_PHOTOS'],bindings:{ADMIN_PASSWORD:'local-test-password',SESSION_SECRET:'local-test-secret-only',GITHUB_OWNER:'test',GITHUB_REPO:'test',GITHUB_BRANCH:'main',GITHUB_TOKEN:'local'},
     outboundService:request=>{
       assert.equal(request.method,'GET','Migration must never write GitHub');
       githubReads++;

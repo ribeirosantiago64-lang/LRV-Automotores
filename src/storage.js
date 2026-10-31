@@ -49,7 +49,7 @@ export function imageType(bytes) {
   throw new StorageError("La foto no es una imagen JPG, PNG, WebP o AVIF válida.",400);
 }
 
-async function putPhoto(env,id,bytes,keyPart) {
+export async function putPhoto(env,id,bytes,keyPart) {
   if (bytes.length>5_000_000) throw new StorageError("Cada foto debe pesar menos de 5 MB.",400);
   const type = imageType(bytes);
   const key = `vehicles/${id}/${keyPart}.${TYPES[type]}`;
@@ -125,6 +125,7 @@ export async function saveVehicle(env,vehicle,files,originalId) {
   const db=await writableDatabase(env);
   if (originalId && originalId!==vehicle.id) throw new StorageError("La referencia del vehículo no se puede cambiar.",400);
   const row=await db.prepare("SELECT data,version,active FROM vehicles WHERE id=?").bind(vehicle.id).first();
+  if (row && JSON.parse(row.data).demo) throw new StorageError("Ficha de demostración: retirala y cargá un vehículo real con sus propias fotos.",400);
   if (!originalId && row) throw new StorageError("Ya existe un vehículo con esa referencia.",409);
   if (originalId && (!row || !row.active)) throw new StorageError("Vehículo no encontrado.",404);
   if (originalId && Number(vehicle.revision)!==Number(row.version)) throw new StorageError("El vehículo cambió desde que lo abriste. Actualizá el catálogo antes de editarlo.",409);
