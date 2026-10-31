@@ -30,18 +30,40 @@ document.addEventListener('keydown',e=>{if($('#galleryViewer').hidden)return;if(
 detail=function(id){showroomDetail(id);const v=vehicles.find(v=>v.id===id);if(!v)return;
  recentlyViewed=[id,...recentlyViewed.filter(x=>x!==id)].slice(0,6);try{localStorage.setItem('lrv-recent',JSON.stringify(recentlyViewed));}catch{}renderRecent();
  const form=$('#detailContent form');
+ let interestButton;
  const layout=$('#detailContent .detail-layout'),visual=layout?.firstElementChild,summary=layout?.lastElementChild;
  if(summary){
   summary.classList.add('vehicle-summary-panel');
   const badges=summary.querySelector('.badges');
   if(badges&&!badges.querySelector('.availability')){const availability=document.createElement('span');availability.className='badge availability';availability.textContent=v.availability||'Disponible';badges.append(availability);}
   const specs=summary.querySelector('.specs');
-  if(specs){const heading=document.createElement('h3');heading.className='specs-title';heading.textContent='Características principales';specs.before(heading);}
-  const actions=$('#detailContent .detail-actions');if(actions)summary.append(actions);
-  if(form){form.classList.add('detail-contact-form');summary.append(form);}
+  if(specs&&visual){const heading=document.createElement('h3');heading.className='specs-title';heading.textContent='Características principales';visual.append(heading,specs);}
+  const actions=$('#detailContent .detail-actions');
+  const advance=document.createElement('section');advance.className='advance-card';advance.innerHTML='<h3>Elegí cómo avanzar</h3><p>Consultá o coordiná una visita sin compromiso.</p>';
+  interestButton=document.createElement('button');interestButton.type='button';interestButton.className='button primary interest-button';interestButton.textContent='¡Me interesa!';interestButton.setAttribute('aria-expanded','false');advance.append(interestButton);
+  if(actions)advance.append(actions);summary.append(advance);
+  if(form){form.classList.add('detail-contact-form');form.hidden=true;summary.append(form);}
+  const revealForm=()=>{if(!form)return;form.hidden=false;interestButton.setAttribute('aria-expanded','true');interestButton.textContent='Formulario de contacto';form.scrollIntoView({behavior:'smooth',block:'nearest'});};
+  interestButton.onclick=revealForm;
+  actions?.querySelector('.visit-action')?.addEventListener('click',revealForm,true);
  }
- if(visual){visual.classList.add('vehicle-gallery-panel');const hint=document.createElement('p');hint.className='photo-expand-hint';hint.textContent='Tocá una imagen para ampliarla';visual.prepend(hint);}
- if(v.demo){form.hidden=true;$('#detailContent .visit-action').hidden=true;const banner=document.createElement('p');banner.className='demo-notice';banner.textContent='DEMOSTRACIÓN · Este vehículo no está a la venta. Precio, kilometraje y datos simulados; fotografía de referencia de otro mercado.';$('#detailContent').prepend(banner);}
+ if(visual){
+  visual.classList.add('vehicle-gallery-panel');
+  const hint=document.createElement('p');hint.className='photo-expand-hint';hint.innerHTML='<b>Vista interactiva</b><span>Mové el puntero para explorar · tocá para ampliar</span>';visual.prepend(hint);
+  const main=visual.querySelector('.main-image');
+  if(main){
+   const stage=document.createElement('div');stage.className='vehicle-explorer';main.before(stage);stage.append(main);
+   const controls=document.createElement('div');controls.className='explorer-controls';controls.innerHTML='<button type="button" data-zoom-out aria-label="Alejar">−</button><button type="button" data-zoom-in aria-label="Acercar">+</button><button type="button" data-fullscreen aria-label="Abrir pantalla completa">↗</button>';stage.append(controls);
+   let zoom=1,rotateX=0,rotateY=0;
+   const update=()=>{main.style.transform=`perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale(${zoom})`;};
+   stage.addEventListener('pointermove',event=>{if(event.pointerType==='touch')return;const rect=stage.getBoundingClientRect();rotateY=((event.clientX-rect.left)/rect.width-.5)*5;rotateX=-((event.clientY-rect.top)/rect.height-.5)*4;update();});
+   stage.addEventListener('pointerleave',()=>{rotateX=rotateY=0;update();});
+   controls.querySelector('[data-zoom-in]').onclick=event=>{event.stopPropagation();zoom=Math.min(1.5,zoom+.15);update();};
+   controls.querySelector('[data-zoom-out]').onclick=event=>{event.stopPropagation();zoom=Math.max(1,zoom-.15);update();};
+   controls.querySelector('[data-fullscreen]').onclick=event=>{event.stopPropagation();main.click();};
+  }
+ }
+ if(v.demo){interestButton?.setAttribute('hidden','');form.hidden=true;$('#detailContent .visit-action').hidden=true;const banner=document.createElement('p');banner.className='demo-notice';banner.textContent='DEMOSTRACIÓN · Este vehículo no está a la venta. Precio, kilometraje y datos simulados; fotografía de referencia de otro mercado.';$('#detailContent').prepend(banner);}
  const openGallery=(index,returnElement)=>{galleryImages=v.images||[];if(!galleryImages.length)return;galleryIndex=index;galleryReturn=returnElement;$('#galleryImage').alt=`${v.brand} ${v.model}${v.demo?' · referencia':''}`;updateGallery();$('#galleryViewer').hidden=false;$('#galleryClose').focus();};
  const bindGalleryTrigger=(image,index)=>{if(!image)return;image.tabIndex=0;image.setAttribute('role','button');image.setAttribute('aria-label',`Ampliar foto ${index+1} de ${v.brand} ${v.model}`);image.onclick=()=>openGallery(index,image);image.onkeydown=event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();openGallery(index,image);}};};
  bindGalleryTrigger($('#detailContent .main-image'),0);
