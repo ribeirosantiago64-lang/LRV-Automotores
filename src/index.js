@@ -85,6 +85,9 @@ function validateVehicle(raw) {
     features: Array.isArray(raw.features) ? raw.features.map((x) => cleanText(x, 100)).filter(Boolean).slice(0, 40) : [],
     existingImages: Array.isArray(raw.existingImages) ? raw.existingImages.slice(0, 20) : [],
     revision: Number(raw.revision),
+    availability: ['Disponible','Reservado','Vendido'].includes(raw.availability) ? raw.availability : 'Disponible',
+    version: cleanText(raw.version,100), maintenance: cleanText(raw.maintenance,1500),
+    inspection: cleanText(raw.inspection,1500), priceIncludes: cleanText(raw.priceIncludes,800),
   };
   if (!v.id || !v.brand || !v.model || !Number.isInteger(v.year) || v.year < 1950 || v.year > 2100 || !Number.isFinite(v.price) || v.price < 0 || !v.description) throw new Error("Datos del vehículo incompletos o inválidos");
   if (!["0 km", "Usado"].includes(v.condition) || !["SUV", "Hatch", "Sedán"].includes(v.type)) throw new Error("Estado o tipo de vehículo inválido");
@@ -212,6 +215,7 @@ async function recordInquiry(request, env) {
   // Take the vehicle snapshot from the server, never from client-supplied prices.
   const vehicle = await getVehicle(env,raw.vehicleId,listLegacyVehicles);
   if (!vehicle) return responseJson({error:"El vehículo ya no está disponible."},404);
+  if (vehicle.availability==='Vendido') return responseJson({error:'Este vehículo fue vendido. Consultá por otras opciones del catálogo.'},409);
   await storageDatabase(env);
   const timestamp = new Date().toISOString();
   await db.batch([
@@ -289,6 +293,26 @@ async function api(request, env, ctx) {
   if (url.pathname === "/api/storage" && request.method === "GET") return responseJson(await storageStatus(env));
   if (url.pathname === "/api/storage/migrate" && request.method === "POST") return responseJson(await importCatalog(env));
   if (url.pathname === "/api/statistics" && request.method === "GET") return vehicleStatistics(env, url);
+  if (url.pathname.startsWith('/api/followup/') && request.method === 'PUT') {
+    if (Number(request.headers.get('content-length') || 0)>6000) return responseJson({error:'Datos demasiado extensos'},413);
+    const reader=request.body?.getReader();if(!reader)return responseJson({error:'Faltan datos'},400);
+    const chunks=[];let size=0;
+    while(true){const {value,done}=await reader.read();if(done)break;size+=value.byteLength;if(size>6000){await reader.cancel();return responseJson({error:'Datos demasiado extensos'},413);}chunks.push(value);}
+    const bytes=new Uint8Array(size);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}
+    const raw=new TextDecoder().decode(bytes);
+    const data=JSON.parse(raw), id=url.pathname.split('/').pop();
+    if(!['Nueva','Contactado','Visita coordinada','Venta cerrada','Perdida'].includes(data.stage))return responseJson({error:'Estado inválido'},400);
+    const db=await inquiriesDatabase(env);
+    if(!await db.prepare('SELECT id FROM inquiries WHERE id=?').bind(id).first())return responseJson({error:'Solicitud no encontrada'},404);
+    await db.prepare('CREATE TABLE IF NOT EXISTS inquiry_followup (id TEXT PRIMARY KEY,stage TEXT NOT NULL,note TEXT NOT NULL,updated_at TEXT NOT NULL)').run();
+    await db.prepare('INSERT INTO inquiry_followup VALUES (?,?,?,?) ON CONFLICT(id) DO UPDATE SET stage=excluded.stage,note=excluded.note,updated_at=excluded.updated_at').bind(id,data.stage,cleanText(data.note,1500),new Date().toISOString()).run();
+    return responseJson({ok:true});
+  }
+  if(url.pathname==='/api/followup' && request.method==='GET') {
+    const db=await inquiriesDatabase(env);
+    await db.prepare('CREATE TABLE IF NOT EXISTS inquiry_followup (id TEXT PRIMARY KEY,stage TEXT NOT NULL,note TEXT NOT NULL,updated_at TEXT NOT NULL)').run();
+    const {results}=await db.prepare('SELECT * FROM inquiry_followup ORDER BY updated_at DESC LIMIT 500').all();return responseJson({items:results});
+  }
   if (url.pathname === "/api/inquiries" && request.method === "GET") {
     const db = await inquiriesDatabase(env);
     const offset = Math.max(0, Math.floor(Number(url.searchParams.get("offset")) || 0));
@@ -334,6 +358,20 @@ export default {
       const url = new URL(request.url);
       if (url.pathname.startsWith("/api/")) return await api(request, env, ctx);
       if (url.pathname.startsWith("/media/")) return await servePhoto(request,env);
+      if (url.pathname === '/robots.txt') return new Response(`User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: ${url.origin}/sitemap.xml\n`,{headers:{'content-type':'text/plain'}});
+      if (url.pathname === '/sitemap.xml') {
+        const items=await listVehicles(env,ctx);
+        return new Response(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>${url.origin}/</loc></url>${items.map(v=>`<url><loc>${url.origin}/vehiculo/${encodeURIComponent(v.id)}</loc></url>`).join('')}</urlset>`,{headers:{'content-type':'application/xml'}});
+      }
+      if (url.pathname.startsWith('/vehiculo/')) {
+        const vehicle=await getVehicle(env,url.pathname.split('/').pop(),listLegacyVehicles);
+        if(!vehicle)return new Response('Vehículo no encontrado',{status:404});
+        const escape=value=>String(value||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        const title=`${vehicle.brand} ${vehicle.model} ${vehicle.year} | LRV Automotores`;
+        const description=`USD ${vehicle.price} · ${vehicle.km} km · ${vehicle.transmission}. ${vehicle.description}`.slice(0,250);
+        const asset=await env.ASSETS.fetch(new Request(new URL('/index.html',url),request));
+        return new HTMLRewriter().on('title',{element(e){e.setInnerContent(title);}}).on('meta[name="description"]',{element(e){e.setAttribute('content',description);}}).on('head',{element(e){e.append(`<link rel="canonical" href="${escape(url.origin+url.pathname)}"><meta property="og:title" content="${escape(title)}"><meta property="og:description" content="${escape(description)}"><meta property="og:url" content="${escape(url.origin+url.pathname)}"><meta property="og:type" content="website"><meta property="og:image" content="${escape(new URL(vehicle.images[0],url.origin).href)}">`,{html:true});}}).transform(asset);
+      }
       return await env.ASSETS.fetch(request);
     } catch (error) {
       console.error(JSON.stringify({ message: "request_failed", error: error instanceof Error ? error.message : String(error) }));

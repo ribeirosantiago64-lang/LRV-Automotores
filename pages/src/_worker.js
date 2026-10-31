@@ -2,7 +2,7 @@
 export default {
   async fetch(request,env) {
     const path=new URL(request.url).pathname;
-    if(path.startsWith("/api/") || path.startsWith("/media/")) {
+    if(path.startsWith("/api/") || path.startsWith("/media/") || path.startsWith('/vehiculo/') || ['/robots.txt','/sitemap.xml'].includes(path)) {
       if(!env.BACKEND)return new Response("El backend todavía no está conectado.",{status:503});
       return env.BACKEND.fetch(request);
     }

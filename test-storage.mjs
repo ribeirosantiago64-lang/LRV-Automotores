@@ -43,6 +43,13 @@ try{
   assert.equal((await request('/api/storage/migrate',{method:'POST',headers:{origin}})).status,401);
   const login=await request('/api/login',{method:'POST',headers:{origin,'content-type':'application/json'},body:JSON.stringify({password:'local-test-password'})});
   cookie=login.headers.get('set-cookie').split(';')[0];
+  assert.equal((await request('/api/followup')).status,401);
+  assert.equal((await request('/api/followup/old-request',{method:'PUT',headers:{...auth(),'content-type':'application/json'},body:JSON.stringify({stage:'Visita coordinada',note:'Llamar mañana'})})).status,200);
+  const followup=await (await request('/api/followup',{headers:auth()})).json();
+  assert.equal(followup.items[0].stage,'Visita coordinada');
+  assert.equal(followup.items[0].note,'Llamar mañana');
+  assert.equal((await request('/api/followup/old-request',{method:'PUT',headers:{...auth(),'content-type':'application/json'},body:JSON.stringify({stage:'invalid'})})).status,400);
+  assert.equal((await request('/api/followup/old-request',{method:'PUT',headers:{cookie,origin:'https://other.test','content-type':'application/json'},body:JSON.stringify({stage:'Nueva'})})).status,403);
   const step=await request('/api/storage/migrate',{method:'POST',headers:auth()});
   assert.equal(step.status,200);assert.equal((await step.json()).imported,2);
   const failure=await request('/api/storage/migrate',{method:'POST',headers:auth()});
