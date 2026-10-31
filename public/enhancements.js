@@ -38,8 +38,8 @@ detail=function(id){
   try{baseDetail(id);}finally{vehicles=raw;}
   const v=vehicles.find(x=>x.id===id);if(!v)return;
   history.replaceState(null,'',`/vehiculo/${encodeURIComponent(id)}`);document.title=`${v.brand} ${v.model} ${v.year} | LRV Automotores`;
-  const extra=document.createElement('section');extra.className='vehicle-information';
-  extra.innerHTML=`<h3>Información para decidir</h3><dl>${[['Versión',v.version],['Disponibilidad',v.availability||'Disponible'],['Mantenimiento conocido',v.maintenance],['Revisión y estado',v.inspection],['El precio incluye',v.priceIncludes]].map(([k,x])=>`<dt>${k}</dt><dd>${esc(x||'Consultá al asesor para confirmar este dato.')}</dd>`).join('')}</dl>${v.features?.length?`<h3>Equipamiento informado</h3><ul>${v.features.map(f=>`<li>${esc(f)}</li>`).join('')}</ul>`:''}<button class="button secondary" id="shareVehicle">Compartir vehículo</button>`;
+  const extra=document.createElement('section');extra.className='detail-actions';
+  extra.innerHTML='<button class="button secondary" id="shareVehicle">Compartir vehículo</button>';
   $('#detailContent .detail-layout').after(extra);
   $('#shareVehicle').onclick=async()=>{try{if(navigator.share)await navigator.share({title:document.title,url:location.href});else{await navigator.clipboard.writeText(location.href);$('#shareVehicle').textContent='Enlace copiado';}}catch{ $('#shareVehicle').textContent='Copiá el enlace de la barra del navegador';}};
   const form=$('#detailContent form');form.querySelector('h3').textContent='Consultar o coordinar una visita';
@@ -47,7 +47,7 @@ detail=function(id){
   if(v.availability==='Vendido'){form.hidden=true;visit.hidden=true;const note=document.createElement('p');note.textContent='Este vehículo fue vendido. Explorá el catálogo para encontrar otras opciones.';extra.append(note);}
   else if(v.availability==='Reservado'){const note=document.createElement('p');note.textContent='Vehículo reservado. Consultá por su disponibilidad antes de coordinar una visita.';extra.prepend(note);}
   const similar=vehicles.filter(x=>x.id!==id&&x.type===v.type&&x.availability!=='Vendido').slice(0,3);
-  if(similar.length){const s=document.createElement('section');s.innerHTML='<h3>También te pueden interesar</h3>';similar.forEach(x=>{const b=document.createElement('button');b.className='button secondary';b.textContent=`${x.brand} ${x.model} · ${money(x.price)}`;b.onclick=()=>detail(x.id);s.append(b);});$('#detailContent').append(s);}
+  if(similar.length){const s=document.createElement('section');s.className='similar-vehicles';s.innerHTML='<h3>También te pueden interesar</h3><div class="similar-vehicle-grid"></div>';const grid=s.querySelector('.similar-vehicle-grid');similar.forEach(x=>{const b=document.createElement('button');b.type='button';b.className='similar-vehicle-card';b.setAttribute('aria-label',`Ver ${x.brand} ${x.model}, ${money(x.price)}`);b.innerHTML=`<img src="${esc(x.images?.[0]||'')}" alt="${esc(x.brand+' '+x.model)}"><span><b>${esc(x.brand)} ${esc(x.model)}</b><strong>${money(x.price)}</strong></span>`;b.onclick=()=>detail(x.id);grid.append(b);});$('#detailContent').append(s);}
 };
 const baseClose=closeModal;closeModal=function(id){baseClose(id);if(id==='detailModal'){history.replaceState(null,'','/');document.title='LRV Automotores | Vehículos en Uruguay';}};
 document.addEventListener('keydown',e=>{if(e.key==='Escape')document.querySelectorAll('.modal.open').forEach(m=>closeModal(m.id));});
