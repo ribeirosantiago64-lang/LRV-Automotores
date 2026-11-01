@@ -6,4 +6,4 @@ toggle.addEventListener('click',()=>setMenu(toggle.getAttribute('aria-expanded')
 navigation.addEventListener('click',event=>{if(event.target.closest('a,button'))setMenu(false);});
 document.addEventListener('pointerdown',event=>{if(!header.contains(event.target))setMenu(false);});
 document.addEventListener('keydown',event=>{if(event.key==='Escape'&&toggle.getAttribute('aria-expanded')==='true'){setMenu(false);toggle.focus();}});
-window.addEventListener('resize',()=>{if(window.innerWidth>760)setMenu(false);});
+window.addEventListener('resize',()=>{if(window.innerWidth>900)setMenu(false);});
