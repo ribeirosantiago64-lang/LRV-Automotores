@@ -1,0 +1,32 @@
+/* LRV vehicle detail — mobile layout fix. Loaded last to override legacy gallery rules. */
+@media(max-width:600px){
+  #detailModal{padding:0!important;background:#fff;overscroll-behavior:contain}
+  #detailModal.open{display:block;overflow-y:auto;overflow-x:hidden}
+  #detailModal .detail-card{width:100%;min-height:100%;margin:0;padding:54px 0 22px!important;border-radius:0;box-shadow:none;overflow:visible}
+  #detailModal .close{position:sticky!important;top:calc(env(safe-area-inset-top) + 8px)!important;right:auto!important;left:calc(100% - 56px);display:grid;width:44px;height:44px;z-index:12;margin:-46px 12px 6px 0;background:rgba(255,255,255,.96);box-shadow:0 3px 12px #0002}
+  #detailContent{padding:0 14px 30px!important;min-width:0}
+  #detailContent .detail-layout{grid-template-columns:minmax(0,1fr)!important;gap:18px}
+  #detailContent .detail-layout>div{min-width:0}
+  .vehicle-gallery-panel{padding:0!important;display:flex;flex-direction:column;min-width:0}
+  .photo-expand-hint{display:flex;flex-direction:column;align-items:flex-start;gap:4px;margin:0 0 10px;padding:0 52px 0 0!important;font-size:.76rem;line-height:1.45}
+  .photo-expand-hint b{font-size:.78rem}
+  .photo-expand-hint span{font-size:.76rem;font-weight:400;color:#686b74}
+  .vehicle-explorer{display:block;position:relative;min-height:0!important;height:auto!important;aspect-ratio:16/10;border-radius:12px;background:#f4f4f5;overflow:hidden;touch-action:pan-y}
+  .vehicle-explorer:after{display:none!important}
+  .vehicle-explorer .main-image{display:block!important;position:relative;width:100%!important;height:100%!important;max-height:none!important;aspect-ratio:auto!important;object-fit:contain!important;transform:none!important;transition:none!important;will-change:auto;border:0!important;border-radius:0;cursor:zoom-in}
+  .explorer-controls{top:8px!important;right:8px!important;display:flex;gap:6px;z-index:2}
+  .explorer-controls button[data-zoom-in],.explorer-controls button[data-zoom-out]{display:none!important}
+  .explorer-controls button[data-fullscreen]{display:grid;place-items:center;width:36px;height:36px;padding:0;border-radius:9px;font-size:1.1rem;background:#fffffff0}
+  .vehicle-gallery-panel .thumbs{display:flex!important;grid-template-columns:none!important;flex-wrap:nowrap!important;gap:8px!important;width:100%;max-width:100%;min-width:0;overflow-x:auto!important;overflow-y:hidden;padding:3px 0 8px!important;margin:9px 0 0!important;scroll-snap-type:x mandatory;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch}
+  .vehicle-gallery-panel .thumbs img{display:block!important;flex:0 0 82px!important;width:82px!important;min-width:82px!important;max-width:82px!important;height:64px!important;max-height:64px!important;aspect-ratio:auto!important;object-fit:cover!important;padding:0;margin:0;border-radius:8px;scroll-snap-align:start}
+  .photo-credit{font-size:.66rem;line-height:1.4;margin:5px 0 8px;overflow-wrap:anywhere}
+  .vehicle-gallery-panel .specs-title{margin:17px 0 10px!important;font-size:1.12rem!important}
+  .vehicle-gallery-panel .specs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important;margin:0}
+  .vehicle-gallery-panel .spec{min-height:70px!important;padding:10px!important}
+  .vehicle-summary-panel{padding:18px 14px!important;border-radius:12px}
+  .vehicle-summary-panel h2{font-size:1.55rem!important;margin:10px 0 6px}
+  .vehicle-summary-panel>.price{font-size:1.5rem!important;margin:8px 0 16px}
+  .advance-card{margin-top:16px;padding:16px}
+  .detail-contact-form{padding:16px 12px}
+  #detailContent>.similar-vehicles{padding:0;margin-top:24px}
+}
