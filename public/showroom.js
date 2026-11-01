@@ -49,7 +49,7 @@ detail=function(id){showroomDetail(id);const v=vehicles.find(v=>v.id===id);if(!v
  }
  if(visual){
   visual.classList.add('vehicle-gallery-panel');
-  const hint=document.createElement('p');hint.className='photo-expand-hint';hint.innerHTML='<b>Vista interactiva</b><span>Mové el puntero para explorar · tocá para ampliar</span>';visual.prepend(hint);
+  const hint=document.createElement('p');hint.className='photo-expand-hint';hint.innerHTML=window.matchMedia('(max-width: 600px)').matches?'<b>Galería del vehículo</b><span>Deslizá las miniaturas o tocá la foto para ampliar</span>':'<b>Vista interactiva</b><span>Mové el puntero para explorar · tocá para ampliar</span>';visual.prepend(hint);
   const main=visual.querySelector('.main-image');
   if(main){
    const stage=document.createElement('div');stage.className='vehicle-explorer';main.before(stage);stage.append(main);
