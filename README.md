@@ -69,3 +69,4 @@ npm run dev
 ```
 
 Las pruebas usan D1 y R2 locales y un GitHub simulado; no crean consultas ni envían mensajes en producción.
+Las ramas de trabajo usan las vistas previas de Cloudflare Workers para revisar los cambios antes de integrarlos en `main`.
