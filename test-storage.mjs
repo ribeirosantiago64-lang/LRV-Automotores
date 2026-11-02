@@ -70,7 +70,7 @@ try{
   assert.equal((await request(photoUrl,{headers:{'if-none-match':photo.headers.get('etag')}})).status,304);
   assert.equal((await request(photoUrl,{method:'HEAD'})).status,200);
   assert.equal((await request(photoUrl,{method:'POST'})).status,405);
-  const sample={id:'new-vehicle',brand:'Prueba',model:'Nuevo',year:2026,price:12345,condition:'0 km',type:'Hatch',km:0,fuel:'Nafta',transmission:'Manual',description:'Nuevo vehículo',existingImages:[]};
+  const sample={id:'new-vehicle',publicationStatus:'published',brand:'Prueba',model:'Nuevo',year:2026,price:12345,currency:'USD',condition:'0 km',type:'Hatch',km:0,fuel:'Nafta',transmission:'Manual',description:'Nuevo vehículo',locationCity:'Montevideo',locationRegion:'Montevideo',sellerName:'LRV Automotores',sellerWhatsapp:'097135114',existingImages:[]};
   assert.equal((await postVehicle(sample,[new File(['not an image'],'fake.png',{type:'image/png'})])).status,400);
   const made=await postVehicle(sample,[new File([png],'real.png',{type:'image/png'})]);
   assert.equal(made.status,201);
@@ -81,6 +81,31 @@ try{
   const edited=await postVehicle({...saved,description:'Descripción actualizada',existingImages:saved.images},[],saved.id);
   assert.equal(edited.status,201);assert.equal((await edited.json()).vehicle.revision,2);
   assert.equal((await postVehicle({...saved,existingImages:saved.images},[],saved.id)).status,409);
+  const draftResponse=await postVehicle({publicationStatus:'draft',brand:'Borrador',existingImages:[]});
+  assert.equal(draftResponse.status,201,'An incomplete draft must save without photos');
+  const draft=(await draftResponse.json()).vehicle;
+  assert.ok(!(await (await request('/api/vehicles')).json()).some(v=>v.id===draft.id),'Public catalog must exclude drafts');
+  assert.ok((await (await request('/api/admin/vehicles',{headers:auth()})).json()).some(v=>v.id===draft.id),'Admin catalog must include drafts');
+  assert.equal((await request('/api/admin/vehicles')).status,401);
+  const draftInquiry=await request('/api/inquiries',{method:'POST',headers:{origin,'content-type':'application/json'},body:JSON.stringify({id:crypto.randomUUID(),vehicleId:draft.id,name:'Cliente',phone:'097135114',email:'cliente@example.com',message:'Quiero consultar este borrador',channel:'email'})});
+  assert.equal(draftInquiry.status,404,'Drafts must not accept public inquiries');
+  const invalidPublish=await postVehicle({...draft,publicationStatus:'published',existingImages:[]},[],draft.id);
+  assert.equal(invalidPublish.status,400,'Publishing a draft must require essential data');
+
+  const electric={id:'electric-test',publicationStatus:'published',brand:'BYD',model:'Dolphin',version:'GS',year:2025,condition:'Usado',km:8500,price:28990,currency:'USD',locationCity:'Canelones',locationRegion:'Canelones',availability:'Disponible',type:'Hatchback',fuel:'Eléctrico',engineDisplacement:2,turbo:'yes',urbanConsumption:9,highwayConsumption:8,batteryCapacity:60.4,electricRange:427,rangeCycle:'WLTP',connectorType:'CCS2',chargingPower:'80 kW DC',chargingTime:'30 a 80 % en 30 minutos',batteryHealth:97,power:204,powerUnit:'CV',transmission:'Automática',traction:'Delantera',doors:5,seats:5,equipment:{airConditioning:'yes',abs:'yes',stabilityControl:'yes',isofix:'yes'},driverAssistance:['Frenado automático de emergencia'],description:'Eléctrico usado con historial documentado.',sellerName:'LRV Automotores',sellerWhatsapp:'097135114',existingImages:[]};
+  const electricMade=await postVehicle(electric,[new File([png],'electric.png',{type:'image/png'})]);
+  assert.equal(electricMade.status,201);
+  const electricSaved=(await electricMade.json()).vehicle;
+  assert.equal(electricSaved.engineDisplacement,null,'Pure electric records must not keep displacement');
+  assert.equal(electricSaved.urbanConsumption,null,'Pure electric records must not keep fuel consumption');
+  assert.equal(electricSaved.batteryCapacity,60.4);assert.equal(electricSaved.rangeCycle,'WLTP');
+
+  const used={id:'used-test',publicationStatus:'published',brand:'Volkswagen',model:'T-Cross',version:'Highline',year:2022,condition:'Usado',km:43000,price:26900,currency:'USD',priceNegotiable:'yes',locationCity:'Maldonado',locationRegion:'Maldonado',availability:'Reservado',type:'SUV',fuel:'Nafta/Gasolina',engineDisplacement:1.4,turbo:'yes',power:150,powerUnit:'CV',transmission:'Automática',transmissionDetail:'Otra',gears:6,traction:'Delantera',doors:5,seats:5,urbanConsumption:8.1,highwayConsumption:5.8,consumptionUnit:'L/100 km',equipment:{airConditioning:'yes',powerSteering:'yes',parkingCamera:'yes',abs:'yes',stabilityControl:'yes',isofix:'yes'},tapizado:'Cuero',airbags:6,previousOwners:1,maintenance:'Services registrados',lastService:'40.000 km',tireCondition:'Bueno',bodyCondition:'Muy bueno',interiorCondition:'Muy bueno',accidents:'No informado',documentation:'Al día',taxesAndFines:'Sin deuda informada',warranty:'3 meses de motor y caja',acceptsTrade:'yes',financingAvailable:'yes',financing:{downPayment:10000,installments:36,installmentValue:620,currency:'USD',interest:'Tasa informada al solicitar cotización',expenses:'Gastos administrativos informados antes de firmar'},description:'SUV usado revisado.',sellerName:'LRV Automotores',sellerPhone:'097135114',existingImages:[],photoOrder:[{kind:'new',index:1},{kind:'new',index:0}]};
+  const usedMade=await postVehicle(used,[new File([png],'front.png',{type:'image/png'}),new File([png],'rear.png',{type:'image/png'})]);
+  assert.equal(usedMade.status,201);
+  const usedSaved=(await usedMade.json()).vehicle;
+  assert.equal(usedSaved.images.length,2);assert.equal(usedSaved.availability,'Reservado');assert.equal(usedSaved.financing.installments,36);
+  assert.ok(usedSaved.images[0]!==usedSaved.images[1],'Ordered photos must remain distinct objects');
   const active=await (await request('/api/vehicles')).json();
   const current=active.find(v=>v.id===saved.id);
   const attempts=await Promise.all([1,2].map(i=>postVehicle({...current,description:'Edición concurrente '+i,existingImages:current.images},[new File([png],'new.png',{type:'image/png'})],current.id)));
@@ -100,5 +125,5 @@ try{
   assert.equal((await pages.fetch('https://site.pages.dev/api/storage',{headers:{cookie:pagesCookie}})).status,200);
   assert.equal((await pages.fetch('https://site.pages.dev'+photoUrl)).status,200);
   assert.equal((await pages.fetch('https://site.pages.dev/api/storage/migrate',{method:'POST',headers:{cookie:pagesCookie,origin:'https://evil.example'}})).status,403);
-  console.log('PASS: resumable migration, D1 catalog/users, R2 image serving, upload validation, edit conflicts, rollback cleanup, history preservation and Pages proxy.');
+  console.log('PASS: migration, D1/R2, drafts, used/electric records, ordered photos, edit conflicts, history preservation and Pages proxy.');
 }finally{await mf.dispose();}

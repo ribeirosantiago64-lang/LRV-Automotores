@@ -101,18 +101,21 @@ export async function migrateCatalog(env,loadLegacy,loadPhoto,limit=2) {
   }
 }
 
-export async function getCatalog(env,loadLegacy) {
+export async function getCatalog(env,loadLegacy,includeDrafts=false) {
   const db=await storageDatabase(env);
   if (!(await ready(db))) return manifest(db,env,loadLegacy);
   const {results}=await db.prepare("SELECT data,version FROM vehicles WHERE active=1 ORDER BY json_extract(data,'$.year') DESC,id ASC").all();
-  return results.map(row=>({...JSON.parse(row.data),revision:Number(row.version)}));
+  return results.map(row=>({...JSON.parse(row.data),revision:Number(row.version)}))
+    .filter(vehicle=>includeDrafts || vehicle.publicationStatus!=='draft');
 }
 
 export async function getVehicle(env,id,loadLegacy) {
   const db=await storageDatabase(env);
   if (!(await ready(db))) return (await manifest(db,env,loadLegacy)).find(vehicle=>vehicle.id===id) || null;
   const row=await db.prepare("SELECT data,version FROM vehicles WHERE id=? AND active=1").bind(id).first();
-  return row?{...JSON.parse(row.data),revision:Number(row.version)}:null;
+  if(!row)return null;
+  const vehicle=JSON.parse(row.data);
+  return vehicle.publicationStatus==='draft'?null:{...vehicle,revision:Number(row.version)};
 }
 
 async function writableDatabase(env) {
@@ -129,7 +132,8 @@ export async function saveVehicle(env,vehicle,files,originalId) {
   if (!originalId && row) throw new StorageError("Ya existe un vehículo con esa referencia.",409);
   if (originalId && (!row || !row.active)) throw new StorageError("Vehículo no encontrado.",404);
   if (originalId && Number(vehicle.revision)!==Number(row.version)) throw new StorageError("El vehículo cambió desde que lo abriste. Actualizá el catálogo antes de editarlo.",409);
-  const existing=originalId?JSON.parse(row.data).images:[];
+  const previous=originalId?JSON.parse(row.data):null;
+  const existing=previous?.images || [];
   if (vehicle.existingImages.some(url=>!existing.includes(url) || !validPhotoUrl(url))) throw new StorageError("Una de las fotos no pertenece a este vehículo.",400);
   if (files.length+vehicle.existingImages.length>20) throw new StorageError("Podés guardar hasta 20 fotos por vehículo.",400);
   const buffers=[];
@@ -142,14 +146,33 @@ export async function saveVehicle(env,vehicle,files,originalId) {
   const uploaded=[];
   try {
     for(const bytes of buffers) uploaded.push(await putPhoto(env,vehicle.id,bytes,crypto.randomUUID()));
-    const timestamp=new Date().toISOString(),saved={...vehicle,images:[...vehicle.existingImages,...uploaded],updatedAt:timestamp};
+    let images=[...vehicle.existingImages,...uploaded];
+    if(vehicle.photoOrder?.length){
+      const usedExisting=new Set(),usedNew=new Set(),ordered=[];
+      for(const item of vehicle.photoOrder){
+        if(item.kind==='existing' && vehicle.existingImages.includes(item.value) && !usedExisting.has(item.value)){
+          usedExisting.add(item.value);ordered.push(item.value);
+        }else if(item.kind==='new' && Number.isInteger(item.index) && uploaded[item.index] && !usedNew.has(item.index)){
+          usedNew.add(item.index);ordered.push(uploaded[item.index]);
+        }
+      }
+      for(const url of vehicle.existingImages)if(!usedExisting.has(url))ordered.push(url);
+      uploaded.forEach((url,index)=>{if(!usedNew.has(index))ordered.push(url);});
+      images=ordered;
+    }
+    const timestamp=new Date().toISOString(),saved={...vehicle,images,updatedAt:timestamp};
     delete saved.existingImages;delete saved.revision;
+    delete saved.photoOrder;
     if(originalId) {
       const changed=await db.prepare("UPDATE vehicles SET data=?,version=version+1,updated_at=? WHERE id=? AND version=? AND active=1").bind(JSON.stringify(saved),timestamp,vehicle.id,Number(vehicle.revision)).run();
       if(!changed.meta.changes) throw new StorageError("El vehículo cambió mientras lo guardabas. Actualizá el catálogo.",409);
     } else {
       try {await db.prepare("INSERT INTO vehicles (id,data,created_at,updated_at) VALUES (?,?,?,?)").bind(vehicle.id,JSON.stringify(saved),timestamp,timestamp).run();}
       catch(error){if(/UNIQUE|PRIMARY KEY/.test(error.message))throw new StorageError("Ya existe un vehículo con esa referencia.",409);throw error;}
+    }
+    if(originalId){
+      const retained=new Set(saved.images);
+      await Promise.allSettled(existing.filter(url=>!retained.has(url)).map(url=>env.VEHICLE_PHOTOS.delete(url.slice("/media/".length))));
     }
     return {vehicle:{...saved,revision:originalId?Number(row.version)+1:1}};
   }catch(error){

@@ -76,22 +76,63 @@ function validateOrigin(request) {
   return !origin || origin === new URL(request.url).origin;
 }
 
-function validateVehicle(raw) {
+function validateVehicle(raw,{requireEssential=true}={}) {
+  const nullableNumber=(value,min=0,max=Number.MAX_SAFE_INTEGER)=>{
+    if(value===''||value===null||value===undefined)return null;
+    const number=Number(value);return Number.isFinite(number)&&number>=min&&number<=max?number:null;
+  };
+  const text=(name,max=300)=>cleanText(raw[name],max);
+  const choice=(name,values,fallback='')=>values.includes(raw[name])?raw[name]:fallback;
+  const tri=value=>['yes','no','unknown','na'].includes(value)?value:'unknown';
+  const publicationStatus=raw.publicationStatus==='draft'?'draft':'published';
+  const equipmentKeys=['airConditioning','powerSteering','powerWindows','powerMirrors','centralLocking','multimediaScreen','bluetooth','androidAuto','appleCarPlay','parkingCamera','parkingSensors','cruiseControl','alloyWheels','sunroof','abs','stabilityControl','tractionControl','isofix'];
+  const equipment=Object.fromEntries(equipmentKeys.map(key=>[key,tri(raw.equipment?.[key])]));
+  const fuel=choice('fuel',['Nafta/Gasolina','Diésel','Híbrido','Híbrido enchufable','Eléctrico','Otro'],cleanText(raw.fuel,50));
   const v = {
-    id: slugify(raw.id || `${raw.brand}-${raw.model}-${raw.year}`),
-    brand: cleanText(raw.brand, 80), model: cleanText(raw.model, 100),
-    year: Number(raw.year), price: Number(raw.price), condition: cleanText(raw.condition, 20),
-    type: cleanText(raw.type, 20), km: Number(raw.km || 0), fuel: cleanText(raw.fuel, 50),
-    transmission: cleanText(raw.transmission, 50), description: cleanText(raw.description, 3000),
+    id: slugify(raw.id || `${raw.brand}-${raw.model}-${raw.year}`) || `draft-${crypto.randomUUID()}`,
+    publicationStatus,
+    brand: text('brand',80), model: text('model',100), version: text('version',100),
+    year: nullableNumber(raw.year,1950,2100), price: nullableNumber(raw.price,0,1_000_000_000),
+    currency: choice('currency',['USD','UYU','EUR'],'USD'), priceNegotiable: tri(raw.priceNegotiable),
+    condition: choice('condition',['Nuevo','Seminuevo','Usado','0 km'],cleanText(raw.condition,20)),
+    type: choice('type',['Hatchback','Hatch','Sedán','SUV','Pickup','Rural','Coupé','Convertible','Utilitario','Otro'],cleanText(raw.type,20)),
+    km: nullableNumber(raw.km,0,10_000_000), fuel,
+    transmission: choice('transmission',['Manual','Automática','Automatizada'],cleanText(raw.transmission,50)),
+    transmissionDetail: choice('transmissionDetail',['','CVT','Doble embrague','Otra'],''),
+    description: text('description',5000),
+    locationCity:text('locationCity',100),locationRegion:text('locationRegion',100),
+    exteriorColor:text('exteriorColor',80),interiorColor:text('interiorColor',80),
+    engineDisplacement:nullableNumber(raw.engineDisplacement,0.1,20),turbo:tri(raw.turbo),
+    power:nullableNumber(raw.power,0,5000),powerUnit:choice('powerUnit',['CV','HP','kW'],'CV'),
+    gears:nullableNumber(raw.gears,1,20),traction:choice('traction',['Delantera','Trasera','4x4','Integral','No informado'],''),
+    doors:nullableNumber(raw.doors,1,10),seats:nullableNumber(raw.seats,1,100),
+    urbanConsumption:nullableNumber(raw.urbanConsumption,0,1000),highwayConsumption:nullableNumber(raw.highwayConsumption,0,1000),
+    consumptionUnit:choice('consumptionUnit',['L/100 km','km/L','kWh/100 km'],'L/100 km'),
+    batteryCapacity:nullableNumber(raw.batteryCapacity,0,500),electricRange:nullableNumber(raw.electricRange,0,3000),
+    rangeCycle:text('rangeCycle',50),connectorType:text('connectorType',100),chargingPower:text('chargingPower',100),
+    chargingTime:text('chargingTime',200),batteryHealth:nullableNumber(raw.batteryHealth,0,100),
+    equipment,tapizado:text('tapizado',100),airbags:nullableNumber(raw.airbags,0,30),
+    driverAssistance:Array.isArray(raw.driverAssistance)?raw.driverAssistance.map(x=>cleanText(x,100)).filter(Boolean).slice(0,20):[],
+    previousOwners:nullableNumber(raw.previousOwners,0,100),maintenance:text('maintenance',2000),lastService:text('lastService',300),
+    tireCondition:text('tireCondition',500),bodyCondition:text('bodyCondition',500),interiorCondition:text('interiorCondition',500),
+    accidents:text('accidents',1500),knownRepairs:text('knownRepairs',1500),documentation:text('documentation',1000),
+    taxesAndFines:text('taxesAndFines',1000),warranty:text('warranty',1500),
+    acceptsTrade:tri(raw.acceptsTrade),financingAvailable:tri(raw.financingAvailable),
+    financing:{downPayment:nullableNumber(raw.financing?.downPayment,0,1_000_000_000),installments:nullableNumber(raw.financing?.installments,1,240),installmentValue:nullableNumber(raw.financing?.installmentValue,0,1_000_000_000),currency:['USD','UYU','EUR'].includes(raw.financing?.currency)?raw.financing.currency:'USD',interest:cleanText(raw.financing?.interest,300),expenses:cleanText(raw.financing?.expenses,500)},
+    sellerName:text('sellerName',150),sellerPhone:text('sellerPhone',30),sellerWhatsapp:text('sellerWhatsapp',30),contactEmail:text('contactEmail',200),
     features: Array.isArray(raw.features) ? raw.features.map((x) => cleanText(x, 100)).filter(Boolean).slice(0, 40) : [],
     existingImages: Array.isArray(raw.existingImages) ? raw.existingImages.slice(0, 20) : [],
+    photoOrder:Array.isArray(raw.photoOrder)?raw.photoOrder.filter(item=>item&&['existing','new'].includes(item.kind)).slice(0,20).map(item=>({kind:item.kind,value:cleanText(item.value,500),index:Number(item.index)})):[],
     revision: Number(raw.revision),
     availability: ['Disponible','Reservado','Vendido'].includes(raw.availability) ? raw.availability : 'Disponible',
-    version: cleanText(raw.version,100), maintenance: cleanText(raw.maintenance,1500),
-    inspection: cleanText(raw.inspection,1500), priceIncludes: cleanText(raw.priceIncludes,800),
+    inspection: text('inspection',1500), priceIncludes: text('priceIncludes',800),
   };
-  if (!v.id || !v.brand || !v.model || !Number.isInteger(v.year) || v.year < 1950 || v.year > 2100 || !Number.isFinite(v.price) || v.price < 0 || !v.description) throw new Error("Datos del vehículo incompletos o inválidos");
-  if (!["0 km", "Usado"].includes(v.condition) || !["SUV", "Hatch", "Sedán", "Pickup"].includes(v.type)) throw new Error("Estado o tipo de vehículo inválido");
+  if(fuel==='Eléctrico'){v.engineDisplacement=null;v.turbo='na';v.urbanConsumption=null;v.highwayConsumption=null;}
+  if(publicationStatus==='published'&&requireEssential){
+    const mileageRequired=!['Nuevo','0 km'].includes(v.condition);
+    const contactValid=v.sellerName && (/^[0-9+ ()-]{8,30}$/.test(v.sellerWhatsapp||v.sellerPhone)||/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.contactEmail));
+    if(!v.brand||!v.model||!Number.isInteger(v.year)||!v.condition||v.price===null||!v.currency||!v.locationCity||!v.locationRegion||!contactValid||(mileageRequired&&v.km===null))throw new Error("Para publicar completá marca, modelo, año, condición, kilometraje, precio, moneda, ubicación y contacto.");
+  }
   return v;
 }
 
@@ -162,7 +203,7 @@ async function importCatalog(env) {
 }
 
 async function listVehicles(env, ctx) {
-  const catalog = await getCatalog(env,listLegacyVehicles);
+  const catalog = await getCatalog(env,listLegacyVehicles,false);
   const status = await storageStatus(env);
   if (!status.ready && env.VEHICLE_PHOTOS && ctx?.waitUntil) {
     ctx.waitUntil(importCatalog(env).catch(error=>console.error(JSON.stringify({message:"catalog_import_pending",error:error.message}))));
@@ -295,6 +336,7 @@ async function api(request, env, ctx) {
   if (!(await isAdmin(request, env))) return responseJson({ error: "No autorizado" }, 401);
   if (!validateOrigin(request)) return responseJson({ error: "Origen no permitido" }, 403);
   if (url.pathname === "/api/storage" && request.method === "GET") return responseJson(await storageStatus(env));
+  if (url.pathname === "/api/admin/vehicles" && request.method === "GET") return responseJson(await getCatalog(env,listLegacyVehicles,true));
   if (url.pathname === "/api/storage/migrate" && request.method === "POST") return responseJson(await importCatalog(env));
   if (url.pathname === "/api/statistics" && request.method === "GET") return vehicleStatistics(env, url);
   if (url.pathname.startsWith('/api/followup/') && request.method === 'PUT') {
@@ -355,12 +397,23 @@ async function api(request, env, ctx) {
     let form;
     try{form=await new Response(bytes,{headers:{"content-type":contentType}}).formData();}
     catch{return responseJson({error:"No se pudo leer el formulario del vehículo."},400);}
-    const vehicle = validateVehicle(JSON.parse(String(form.get("vehicle") || "{}")));
+    let rawVehicle;
+    try{rawVehicle=JSON.parse(String(form.get("vehicle") || "{}"));}
+    catch{return responseJson({error:"Los datos del vehículo no son válidos."},400);}
+    const originalId=cleanText(form.get("originalId"),100);
+    let requireEssential=true;
+    if(originalId){
+      const previous=(await getCatalog(env,listLegacyVehicles,true)).find(item=>item.id===originalId);
+      requireEssential=!!previous?.publicationStatus;
+    }
+    let vehicle;
+    try{vehicle=validateVehicle(rawVehicle,{requireEssential});}
+    catch(error){return responseJson({error:error.message||"Revisá los datos del vehículo."},400);}
     const files = form.getAll("photos");
     const uploadedBytes = files.reduce((total, file) => total + (file instanceof File ? file.size : 0), 0);
     if (uploadedBytes > 25_000_000) return responseJson({ error: "Las fotos superan 25 MB en total" }, 413);
-    if (!files.length && !vehicle.existingImages.length) return responseJson({ error: "Agregá al menos una foto" }, 400);
-    return responseJson(await saveVehicle(env, vehicle, files, cleanText(form.get("originalId"), 100)), 201);
+    if (vehicle.publicationStatus==='published' && !files.length && !vehicle.existingImages.length) return responseJson({ error: "Para publicar agregá al menos una foto." }, 400);
+    return responseJson(await saveVehicle(env, vehicle, files, originalId), 201);
   }
   if (url.pathname.startsWith("/api/vehicles/") && request.method === "DELETE") {
     await archiveVehicle(env,decodeURIComponent(url.pathname.split("/").pop()));
